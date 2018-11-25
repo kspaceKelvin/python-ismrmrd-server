@@ -3,7 +3,7 @@
 # Bash script to start Python ISMRMRD server.  First argument is path to log file.
 # If no argument is provided, logging is done to stdout (and discarded)
 
-cp -R "/tmp/share/code/*" "/opt/code/python-ismrmrd-server/"
+cp -R -f /tmp/share/code/* "/opt/code/python-ismrmrd-server/"
 
 if [ $# -eq 1 ]; then
   LOG_FILE=${1}
