@@ -30,12 +30,21 @@ def process(connection, config, params):
 
 
 def process_group(group, config, params):
+
+    # Folder for debug output files
+    debugFolder = "/tmp/share/dependency"
+
+    # Create folder, if necessary
+    if not os.path.exists(debugFolder)
+        os.mkdir(debugFolder)
+        logging.info("Created folder " + debugFolder + " for debug output files")
+
     # Format data into single [cha RO PE] array
     data = [acquisition.data for acquisition in group]
     data = np.stack(data, axis=-1)
 
     logging.info("Raw data is size %s" % (data.shape,))
-    np.save("/tmp/dependency/raw.npy", data)
+    np.save(debugFolder + "/" + "raw.npy", data)
 
     # Fourier Transform
     data = fft.fftshift(data, axes=(1, 2))
@@ -49,7 +58,7 @@ def process_group(group, config, params):
     data = np.sqrt(data)
 
     logging.info("Image data is size %s" % (data.shape,))
-    np.save("/tmp/dependency/img.npy", data)
+    np.save(debugFolder + "/" + "img.npy", data)
 
     # Normalize and convert to int16
     data *= 32768/data.max()
@@ -60,8 +69,8 @@ def process_group(group, config, params):
     nRO = np.size(data,0);
     data = data[int(nRO/4):int(nRO*3/4),:]
     logging.info("Image without oversampling is size %s" % (data.shape,))
-    np.save("/tmp/dependency/img_crop.npy", data)
-    
+    np.save(debugFolder + "/" + "img_crop.npy", data)
+
     # Format as ISMRMRD image data
     image = ismrmrd.Image.from_array(data, acquisition=group[0])
     image.image_index = 1
