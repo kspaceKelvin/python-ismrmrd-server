@@ -1,6 +1,6 @@
 
 import ismrmrd
-
+import os
 import itertools
 import logging
 import numpy as np
@@ -35,7 +35,7 @@ def process_group(group, config, params):
     debugFolder = "/tmp/share/dependency"
 
     # Create folder, if necessary
-    if not os.path.exists(debugFolder)
+    if not os.path.exists(debugFolder):
         os.mkdir(debugFolder)
         logging.info("Created folder " + debugFolder + " for debug output files")
 
