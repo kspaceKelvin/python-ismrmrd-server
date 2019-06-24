@@ -36,7 +36,7 @@ def process_group(group, config, params):
 
     # Create folder, if necessary
     if not os.path.exists(debugFolder):
-        os.mkdir(debugFolder)
+        os.mkdirs(debugFolder)
         logging.info("Created folder " + debugFolder + " for debug output files")
 
     # Format data into single [cha RO PE] array
