@@ -23,4 +23,4 @@ RUN  cd /opt/code \
 
 RUN  apk del gcc git
 
-CMD [ "/opt/code/python-ismrmrd-server/main.py -v"]
+CMD /usr/local/bin/python3 /opt/code/python-ismrmrd-server/main.py -v -H 0.0.0.0 -p 9002
