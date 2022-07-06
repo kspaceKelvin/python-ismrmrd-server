@@ -97,7 +97,7 @@ WORKDIR /opt/code/python-ismrmrd-server
 
 CMD [ "python3", "/opt/code/python-ismrmrd-server/main.py", "-v", "-H=0.0.0.0", "-p=9002", "-l=/tmp/python-ismrmrd-server.log"]
 
-# Replace the above CMD with this ENTRYPOINT to allow allow "docker stop"
+# Replace the above CMD with this ENTRYPOINT to allow "docker stop"
 # commands to be passed to the server.  This is useful for deployments, but
 # more annoying for development
 # ENTRYPOINT [ "python3", "/opt/code/python-ismrmrd-server/main.py", "-v", "-H=0.0.0.0", "-p=9002", "-l=/tmp/python-ismrmrd-server.log"]

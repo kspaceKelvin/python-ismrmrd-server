@@ -154,9 +154,8 @@ def main(args):
 
     # --------------- Send config -----------------------------
     if (args.config_local):
-        fid = open(args.config_local, "r")
-        config_text = fid.read()
-        fid.close()
+        with open(args.config_local, "r") as fid:
+            config_text = fid.read()
         logging.info("Sending local config file '%s' with text:", args.config_local)
         logging.info(config_text)
         connection.send_config_text(config_text)
@@ -261,7 +260,7 @@ if __name__ == '__main__':
     parser.add_argument('-C', '--config-local',                        help='Local configuration file')
     parser.add_argument('-w', '--send-waveforms', action='store_true', help='Send waveform (physio) data')
     parser.add_argument('-v', '--verbose',        action='store_true', help='Verbose mode')
-    parser.add_argument('-l', '--logfile',                  type=str,  help='Path to log file')
+    parser.add_argument('-l', '--logfile',        type=str,            help='Path to log file')
 
     parser.set_defaults(**defaults)
 

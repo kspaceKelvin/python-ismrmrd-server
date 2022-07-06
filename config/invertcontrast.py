@@ -1,147 +1,30 @@
-import ismrmrd
-import os
-import itertools
-import logging
-import traceback
-import numpy as np
-import numpy.fft as fft
-import xml.dom.minidom
 import base64
 import ctypes
-import re
-import mrdhelper
-import constants
+import ismrmrd
+import logging
+import numpy as np
+import numpy.fft as fft
+import os
+import xml.dom.minidom
 from time import perf_counter
 
-# Folder for debug output files
-debugFolder = "/tmp/share/debug"
+import config
+import constants
+import mrdhelper
 
-def process(connection, config, metadata):
-    logging.info("Config: \n%s", config)
-
-    # Metadata should be MRD formatted header, but may be a string
-    # if it failed conversion earlier
-    try:
-        # Disabled due to incompatibility between PyXB and Python 3.8:
-        # https://github.com/pabigot/pyxb/issues/123
-        # # logging.info("Metadata: \n%s", metadata.toxml('utf-8'))
-
-        logging.info("Incoming dataset contains %d encodings", len(metadata.encoding))
-        logging.info("First encoding is of type '%s', with a field of view of (%s x %s x %s)mm^3 and a matrix size of (%s x %s x %s)", 
-            metadata.encoding[0].trajectory, 
-            metadata.encoding[0].encodedSpace.matrixSize.x, 
-            metadata.encoding[0].encodedSpace.matrixSize.y, 
-            metadata.encoding[0].encodedSpace.matrixSize.z, 
-            metadata.encoding[0].encodedSpace.fieldOfView_mm.x, 
-            metadata.encoding[0].encodedSpace.fieldOfView_mm.y, 
-            metadata.encoding[0].encodedSpace.fieldOfView_mm.z)
-
-    except:
-        logging.info("Improperly formatted metadata: \n%s", metadata)
-
-    # Continuously parse incoming data parsed from MRD messages
-    currentSeries = 0
-    acqGroup = []
-    imgGroup = []
-    waveformGroup = []
-    try:
-        for item in connection:
-            # ----------------------------------------------------------
-            # Raw k-space data messages
-            # ----------------------------------------------------------
-            if isinstance(item, ismrmrd.Acquisition):
-                # Accumulate all imaging readouts in a group
-                if (not item.is_flag_set(ismrmrd.ACQ_IS_NOISE_MEASUREMENT) and
-                    not item.is_flag_set(ismrmrd.ACQ_IS_PARALLEL_CALIBRATION) and
-                    not item.is_flag_set(ismrmrd.ACQ_IS_PHASECORR_DATA) and
-                    not item.is_flag_set(ismrmrd.ACQ_IS_NAVIGATION_DATA)):
-                    acqGroup.append(item)
-
-                # When this criteria is met, run process_raw() on the accumulated
-                # data, which returns images that are sent back to the client.
-                if item.is_flag_set(ismrmrd.ACQ_LAST_IN_SLICE):
-                    logging.info("Processing a group of k-space data")
-                    image = process_raw(acqGroup, connection, config, metadata)
-                    connection.send_image(image)
-                    acqGroup = []
-
-            # ----------------------------------------------------------
-            # Image data messages
-            # ----------------------------------------------------------
-            elif isinstance(item, ismrmrd.Image):
-                # Only process magnitude images -- send phase images back without modification (fallback for images with unknown type)
-                if (item.image_type is ismrmrd.IMTYPE_MAGNITUDE) or (item.image_type == 0):
-                    imgGroup.append(item)
-                else:
-                    tmpMeta = ismrmrd.Meta.deserialize(item.attribute_string)
-                    tmpMeta['Keep_image_geometry']    = 1
-                    item.attribute_string = tmpMeta.serialize()
-
-                    connection.send_image(item)
-                    continue
-
-                # When this criteria is met, run process_group() on the accumulated
-                # data, which returns images that are sent back to the client.
-                # e.g. when the series number changes:
-                if item.image_series_index != currentSeries:
-                    logging.info("Processing a group of images because series index changed to %d", item.image_series_index)
-                    currentSeries = item.image_series_index
-                    image = process_image(imgGroup, connection, config, metadata)
-                    connection.send_image(image)
-                    imgGroup = []
-
-            # ----------------------------------------------------------
-            # Waveform data messages
-            # ----------------------------------------------------------
-            elif isinstance(item, ismrmrd.Waveform):
-                waveformGroup.append(item)
-
-            elif item is None:
-                break
-
-            else:
-                logging.error("Unsupported data type %s", type(item).__name__)
-
-        # Extract raw ECG waveform data. Basic sorting to make sure that data 
-        # is time-ordered, but no additional checking for missing data.
-        # ecgData has shape (5 x timepoints)
-        if len(waveformGroup) > 0:
-            waveformGroup.sort(key = lambda item: item.time_stamp)
-            ecgData = [item.data for item in waveformGroup if item.waveform_id == 0]
-            ecgData = np.concatenate(ecgData,1)
-
-        # Process any remaining groups of raw or image data.  This can 
-        # happen if the trigger condition for these groups are not met.
-        # This is also a fallback for handling image data, as the last
-        # image in a series is typically not separately flagged.
-        if len(acqGroup) > 0:
-            logging.info("Processing a group of k-space data (untriggered)")
-            image = process_raw(acqGroup, connection, config, metadata)
-            connection.send_image(image)
-            acqGroup = []
-
-        if len(imgGroup) > 0:
-            logging.info("Processing a group of images (untriggered)")
-            image = process_image(imgGroup, connection, config, metadata)
-            connection.send_image(image)
-            imgGroup = []
-
-    except Exception as e:
-        logging.error(traceback.format_exc())
-        connection.send_logging(constants.MRD_LOGGING_ERROR, traceback.format_exc())
-
-    finally:
-        connection.send_close()
+SETTINGS = config.Settings(True, True, False,
+                           [ismrmrd.ACQ_IS_NOISE_MEASUREMENT,
+                            ismrmrd.ACQ_IS_PARALLEL_CALIBRATION,
+                            ismrmrd.ACQ_IS_PHASECORR_DATA,
+                            ismrmrd.ACQ_IS_NAVIGATION_DATA],
+                           [ismrmrd.ACQ_LAST_IN_SLICE],
+                           [ismrmrd.IMTYPE_MAGNITUDE, 0],
+                           True)
 
 
-def process_raw(group, connection, config, metadata):
+def process_acquisition(group, index, connection, metadata, debug_folder):
     # Start timer
     tic = perf_counter()
-
-    # Create folder, if necessary
-    if not os.path.exists(debugFolder):
-        os.makedirs(debugFolder)
-        logging.debug("Created folder " + debugFolder + " for debug output files")
 
     # Format data into single [cha PE RO phs] array
     lin = [acquisition.idx.kspace_encode_step_1 for acquisition in group]
@@ -169,7 +52,7 @@ def process_raw(group, connection, config, metadata):
     data = np.flip(data, (1, 2))
 
     logging.debug("Raw data is size %s" % (data.shape,))
-    np.save(debugFolder + "/" + "raw.npy", data)
+    np.save(os.path.join(debug_folder, "raw" + str(index) + ".npy"), data)
 
     # Remove readout oversampling
     data = fft.ifft(data, axis=2)
@@ -177,7 +60,7 @@ def process_raw(group, connection, config, metadata):
     data = fft.fft( data, axis=2)
 
     logging.debug("Raw data is size after readout oversampling removal %s" % (data.shape,))
-    np.save(debugFolder + "/" + "rawNoOS.npy", data)
+    np.save(os.path.join(debug_folder, "raw" + str(index) + "NoOS.npy"), data)
 
     # Fourier Transform
     data = fft.fftshift( data, axes=(1, 2))
@@ -192,7 +75,7 @@ def process_raw(group, connection, config, metadata):
     data = np.sqrt(data)
 
     logging.debug("Image data is size %s" % (data.shape,))
-    np.save(debugFolder + "/" + "img.npy", data)
+    np.save(os.path.join(debug_folder, "img" + str(index) + ".npy"), data)
 
     # Normalize and convert to int16
     data *= 32767/data.max()
@@ -208,7 +91,7 @@ def process_raw(group, connection, config, metadata):
     data = data[offset:offset+metadata.encoding[0].reconSpace.matrixSize.y,:]
 
     logging.debug("Image without oversampling is size %s" % (data.shape,))
-    np.save(debugFolder + "/" + "imgCrop.npy", data)
+    np.save(os.path.join(debug_folder, "img" + str(index) + "Crop.npy"), data)
 
     # Measure processing time
     toc = perf_counter()
@@ -248,16 +131,13 @@ def process_raw(group, connection, config, metadata):
         imagesOut.append(tmpImg)
 
     # Call process_image() to invert image contrast
-    imagesOut = process_image(imagesOut, connection, config, metadata)
+    imagesOut = process_image(imagesOut, 0, connection, metadata, debug_folder)
 
     return imagesOut
 
 
-def process_image(images, connection, config, metadata):
-    # Create folder, if necessary
-    if not os.path.exists(debugFolder):
-        os.makedirs(debugFolder)
-        logging.debug("Created folder " + debugFolder + " for debug output files")
+
+def process_image(images, index, connection, metadata, debug_folder):
 
     logging.debug("Processing data with %d images of type %s", len(images), ismrmrd.get_dtype_from_data_type(images[0].data_type))
 
@@ -279,7 +159,7 @@ def process_image(images, connection, config, metadata):
         logging.debug("IceMiniHead[0]: %s", base64.b64decode(meta[0]['IceMiniHead']).decode('utf-8'))
 
     logging.debug("Original image data is size %s" % (data.shape,))
-    np.save(debugFolder + "/" + "imgOrig.npy", data)
+    np.save(os.path.join(debug_folder, "imgOrig.npy"), data)
 
     # Normalize and convert to int16
     data = data.astype(np.float64)
@@ -291,9 +171,7 @@ def process_image(images, connection, config, metadata):
     data = 32767-data
     data = np.abs(data)
     data = data.astype(np.int16)
-    np.save(debugFolder + "/" + "imgInverted.npy", data)
-
-    currentSeries = 0
+    np.save(os.path.join(debug_folder, "imgInverted.npy"), data)
 
     # Re-slice back into 2D images
     imagesOut = [None] * data.shape[-1]
@@ -307,18 +185,10 @@ def process_image(images, connection, config, metadata):
 
         # Create a copy of the original fixed header and update the data_type
         # (we changed it to int16 from all other types)
-        oldHeader = head[iImg]
-        oldHeader.data_type = data_type
+        newHeader = head[iImg]
+        newHeader.data_type = data_type
 
-        # Unused example, as images are grouped by series before being passed into this function now
-        # oldHeader.image_series_index = currentSeries
-
-        # Increment series number when flag detected (i.e. follow ICE logic for splitting series)
-        if mrdhelper.get_meta_value(meta[iImg], 'IceMiniHead') is not None:
-            if mrdhelper.extract_minihead_bool_param(base64.b64decode(meta[iImg]['IceMiniHead']).decode('utf-8'), 'BIsSeriesEnd') is True:
-                currentSeries += 1
-
-        imagesOut[iImg].setHead(oldHeader)
+        imagesOut[iImg].setHead(newHeader)
 
         # Create a copy of the original ISMRMRD Meta attributes and update
         tmpMeta = meta[iImg]
@@ -333,13 +203,7 @@ def process_image(images, connection, config, metadata):
         # Example for setting colormap
         # tmpMeta['LUTFileName']            = 'MicroDeltaHotMetal.pal'
 
-        # Add image orientation directions to MetaAttributes if not already present
-        if tmpMeta.get('ImageRowDir') is None:
-            tmpMeta['ImageRowDir'] = ["{:.18f}".format(oldHeader.read_dir[0]), "{:.18f}".format(oldHeader.read_dir[1]), "{:.18f}".format(oldHeader.read_dir[2])]
-
-        if tmpMeta.get('ImageColumnDir') is None:
-            tmpMeta['ImageColumnDir'] = ["{:.18f}".format(oldHeader.phase_dir[0]), "{:.18f}".format(oldHeader.phase_dir[1]), "{:.18f}".format(oldHeader.phase_dir[2])]
-
+        mrdhelper.meta_fix_imagedirs(tmpMeta, newHeader)
         metaXml = tmpMeta.serialize()
         logging.debug("Image MetaAttributes: %s", xml.dom.minidom.parseString(metaXml).toprettyxml())
         logging.debug("Image data has %d elements", imagesOut[iImg].data.size)
@@ -347,6 +211,8 @@ def process_image(images, connection, config, metadata):
         imagesOut[iImg].attribute_string = metaXml
 
     return imagesOut
+
+
 
 # Create an example ROI <3
 def create_example_roi(img_size):

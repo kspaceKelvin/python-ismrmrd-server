@@ -1,17 +1,13 @@
-
-import constants
-from connection import Connection
-
-import socket
+import importlib
+import ismrmrd.xsd
 import logging
 import multiprocessing
-import ismrmrd.xsd
-import importlib
 import os
+import socket
 
-import simplefft
-import invertcontrast
-import analyzeflow
+import config
+from connection import Connection
+
 
 class Server:
     """
@@ -56,10 +52,14 @@ class Server:
             connection = Connection(sock, self.savedata, "", self.savedataFolder, "dataset")
 
             # First message is the config (file or text)
-            config = next(connection)
+            # TODO Code currently does not handle case where this is a file,
+            #   but the client code suggests that this is a valid use case
+            # This seemingly includes the default operation, in which case file
+            #   "default.xml" is passed
+            selected_config = next(connection)
 
             # Break out if a connection was established but no data was received
-            if ((config is None) & (connection.is_exhausted is True)):
+            if ((selected_config is None) & (connection.is_exhausted is True)):
                 logging.info("Connection closed without any data received")
                 return
 
@@ -71,45 +71,10 @@ class Server:
                 if (metadata.acquisitionSystemInformation.systemFieldStrength_T != None):
                     logging.info("Data is from a %s %s at %1.1fT", metadata.acquisitionSystemInformation.systemVendor, metadata.acquisitionSystemInformation.systemModel, metadata.acquisitionSystemInformation.systemFieldStrength_T)
             except:
-                logging.warning("Metadata is not a valid MRD XML structure.  Passing on metadata as text")
+                logging.warning("Metadata is not a valid MRD XML structure; passing on metadata as text")
                 metadata = metadata_xml
 
-            # Decide what program to use based on config
-            # If not one of these explicit cases, try to load file matching name of config
-            if (config == "simplefft"):
-                logging.info("Starting simplefft processing based on config")
-                simplefft.process(connection, config, metadata)
-            elif (config == "invertcontrast"):
-                logging.info("Starting invertcontrast processing based on config")
-                invertcontrast.process(connection, config, metadata)
-            elif (config == "analyzeflow"):
-                logging.info("Starting analyzeflow processing based on config")
-                analyzeflow.process(connection, config, metadata)
-            elif (config == "null"):
-                logging.info("No processing based on config")
-                try:
-                    for msg in connection:
-                        if msg is None:
-                            break
-                finally:
-                    connection.send_close()
-            elif (config == "savedataonly"):
-                # Dummy loop with no processing
-                try:
-                    for msg in connection:
-                        if msg is None:
-                            break
-                finally:
-                    connection.send_close()
-            else:
-                try:
-                    # Load module from file having exact name as config
-                    module = importlib.import_module(config)
-                    logging.info("Starting config %s", config)
-                    module.process(connection, config, metadata)
-                except ImportError:
-                    logging.info("Unknown config '%s'.  Falling back to 'invertcontrast'", config)
-                    invertcontrast.process(connection, config, metadata)
+            config.process(connection, selected_config, metadata)
 
         except Exception as e:
             logging.exception(e)

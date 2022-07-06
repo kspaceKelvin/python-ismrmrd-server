@@ -31,6 +31,12 @@
 
     For a Docker environment, this should be performed in the same [Docker container as the client](#Dockerclient).
 
+    Outside of that environment, this requires having installed the ISMRMRD module:
+    ```
+    pip install ismrmrd
+    ```
+    , as well as having [installed the ISMRMRD Python tools](https://github.com/ismrmrd/ismrmrd-python-tools).
+
     MRD data is stored in the HDF file format in a hierarchical structure in groups.  The above example creates a ``dataset`` group containing:
     ```
     /dataset/data   Raw k-space data
@@ -59,9 +65,9 @@
     /dataset/images_0/attributes   MRD MetaAttributes text
     ```
 
-1. The [mrd2gif.py](mrd2gif.py) program can be used to convert an MRD Image file into an animated GIF for quick previewing:
+1. The [``mrd2gif``](utils/mrd2gif.py) program can be used to convert an MRD Image file into an animated GIF for quick previewing:
     ```
-    python mrd2gif.py phantom_img.h5
+    python utils/mrd2gif.py phantom_img.h5
     ```
     A GIF file (animated if multiple images present) is generated in the same folder as the MRD file with the same base file name and the group and sub-groups appended.
 
@@ -83,11 +89,11 @@ The MRD server has a modular design to allow for easy integration of custom reco
 ####  1.2.1. <a name='Addingarawk-spacefilter'></a>Adding a raw k-space filter
 In this example, a Hanning filter is applied to raw k-space data.
 
-1. Create a copy of [invertcontrast.py](invertcontrast.py) named ``filterkspace.py``.  For other workflows, it may be preferable to start with another example such as [simplefft.py](simplefft.py).
+1. Create a copy of [``config/invertcontrast.py``](config/invertcontrast.py) named ``config/filterkspace.py``.  For other workflows, it may be preferable to start with another example such as [``simplefft``](config/simplefft.py).
 
 1. The NumPy library contains a [Hanning filter](https://numpy.org/doc/stable/reference/generated/numpy.hanning.html) that can be applied to k-space data before the Fourier transform.
 
-1. In the ``process_raw()`` function the ``filterkspace.py`` file, find the [section where raw k-space data is already sorted into a Cartesian grid, just prior to Fourier transform](https://github.com/kspaceKelvin/python-ismrmrd-server/blob/27454bd9f1a2c7fd3928bfa0767840b0d015d988/invertcontrast.py#L177).  Add a Hanning filter and perform element-wise multiplication of the k-space data with the filter:
+1. In the ``process_raw()`` function of the ``config/filterkspace.py`` file, find the [section where raw k-space data is already sorted into a Cartesian grid, just prior to Fourier transform](https://github.com/kspaceKelvin/python-ismrmrd-server/blob/27454bd9f1a2c7fd3928bfa0767840b0d015d988/invertcontrast.py#L177).  Add a Hanning filter and perform element-wise multiplication of the k-space data with the filter:
 
     **Old code:**
     ```
@@ -119,20 +125,20 @@ In this example, a Hanning filter is applied to raw k-space data.
 
 1. Create a GIF preview of the filtered image:
     ```
-    python mrd2gif.py phantom_img.h5
+    python utils/mrd2gif.py phantom_img.h5
     ```
 
 ####  1.2.2. <a name='Addinganimageprocessingfilter'></a>Adding an image processing filter
 In this example, a high-pass filter is applied to images.
 
-1. Create a copy of [invertcontrast.py](invertcontrast.py) named ``filterimage.py``.  For other workflows, it may be preferable to start with another example such as [analyzeflow.py](analyzeflow.py).
+1. Create a copy of [``config/invertcontrast.py``](config/invertcontrast.py) named ``config/filterimage.py``.  For other workflows, it may be preferable to start with another example such as [``analyzeflow``](config/analyzeflow.py).
 
-1. The Python [Pillow](https://github.com/python-pillow/Pillow/) library contains a high-pass filter named [FIND_EDGES](https://pythontic.com/image-processing/pillow/edge-detection).  Add the following line to the top of the newly created ``filterimage.py`` to import this library:
+1. The Python [Pillow](https://github.com/python-pillow/Pillow/) library contains a high-pass filter named [FIND_EDGES](https://pythontic.com/image-processing/pillow/edge-detection).  Add the following line to the top of the newly created ``config/filterimage.py`` to import this library:
     ```
     from PIL import Image, ImageFilter
     ```
 
-1. In the ``process_image()`` function the ``filterimage.py`` file, find the sections where the incoming images are being [normalized](https://github.com/kspaceKelvin/python-ismrmrd-server/blob/6684b4d17c0591e64b34bc06fdd06d78a2d8c659/invertcontrast.py#L261) and [filtered](https://github.com/kspaceKelvin/python-ismrmrd-server/blob/6684b4d17c0591e64b34bc06fdd06d78a2d8c659/invertcontrast.py#L267). The Pillow image filters require images with values in the range 0-255, so replace these two sections as follows:
+1. In the ``process_image()`` function of the ``config/filterimage.py`` file, find the sections where the incoming images are being [normalized](https://github.com/kspaceKelvin/python-ismrmrd-server/blob/6684b4d17c0591e64b34bc06fdd06d78a2d8c659/invertcontrast.py#L261) and [filtered](https://github.com/kspaceKelvin/python-ismrmrd-server/blob/6684b4d17c0591e64b34bc06fdd06d78a2d8c659/invertcontrast.py#L267). The Pillow image filters require images with values in the range 0-255, so replace these two sections as follows:
 
     **Old code:**
     ```
@@ -176,13 +182,13 @@ In this example, a high-pass filter is applied to images.
 
 1. Create a GIF preview of the filtered image:
     ```
-    python mrd2gif.py phantom_img.h5
+    python utils/mrd2gif.py phantom_img.h5
     ```
 
 ###  1.3. <a name='UsingrawdatafromanMRIscanner'></a>Using raw data from an MRI scanner
 Raw data from MRI scanners can be converted into MRD format using publicly available conversion tools such as [siemens_to_ismrmrd](https://github.com/ismrmrd/siemens_to_ismrmrd), [ge_to_ismrmrd](https://github.com/ismrmrd/ge_to_ismrmrd), [philips_to_ismrmrd](https://github.com/ismrmrd/philips_to_ismrmrd), and [bruker_to_ismrmrd](https://github.com/ismrmrd/bruker_to_ismrmrd).  These can be used as input data for the client as part of streaming MRD framework.
 
-For Siemens data, raw data in .dat format can be converted and processed as follows:
+For Siemens data, raw data in ``.dat`` format can be converted and processed as follows:
 1. Convert a raw data file named ``gre.dat`` into MRD format:
     ```
     siemens_to_ismrmrd -Z -f gre.dat -o gre_raw.h5
@@ -202,16 +208,16 @@ For Siemens data, raw data in .dat format can be converted and processed as foll
     python client.py -c invertcontrast -o gre_img.h5 gre_raw_2.h5
     ```
 
-    Note that the invertcontrast example module only does basic Fourier transform reconstruction and does not support undersampling or more complex acquisitions.
+    Note that the ``invertcontrast`` example module only does basic Fourier transform reconstruction and does not support undersampling or more complex acquisitions.
 
 ###  1.4. <a name='UsingDICOMimagesasinputdata'></a>Using DICOM images as input data
-For image processing workflows, DICOM images can be used as input by converting them into MRD format.  The [dicom2mrd.py](dicom2mrd.py) script can be used to convert DICOMs to MRD, while [mrd2dicom.py](mrd2dicom.py) can be used to perform the inverse.
+For image processing workflows, DICOM images can be used as input by converting them into MRD format.  The [`dicom2mrd`](utils/dicom2mrd.py) script can be used to convert DICOMs to MRD, while [`mrd2dicom`](utils/mrd2dicom.py) can be used to perform the inverse.
 
-1. Create a folder containing DICOM files with file extensions .ima or .dcm.  Files can also be organized in sub-folders if desired.
+1. Create a folder containing DICOM files with file extensions ``.ima`` or ``.dcm``.  Files can also be organized in sub-folders if desired.
 
-1. Run the dicom2mrd conversion script:
+1. Run the ``dicom2mrd`` conversion script:
     ```
-    python dicom2mrd.py -o dicom_img.h5 dicoms
+    python utils/dicom2mrd.py -o dicom_img.h5 dicoms
     ```
     Where the DICOM files are in a folder called ``dicoms`` and an output file ``dicom_img.h5`` is created containing the MRD formatted images.
 
@@ -222,7 +228,7 @@ For image processing workflows, DICOM images can be used as input by converting 
 
 1. Convert the output MRD file back to a folder of DICOMs:
     ```
-    python mrd2dicom.py dicom_img_inverted.h5
+    python utils/mrd2dicom.py dicom_img_inverted.h5
     ```
 
 ##  2. <a name='SettingupaworkingenvironmentforthePythonMRDclientserver'></a>Setting up a working environment for the Python MRD client/server
@@ -334,33 +340,37 @@ A complete working environment of this respository has been compiled into a Dock
 ##  3. <a name='Codedesign'></a>Code design
 This code is designed to provide a reference implementation of an MRD client/server pair.  It is modular and can be easily extended to include additional reconstruction/analysis programs.
 
-- [main.py](main.py):  This is the main program, parsing input arguments and starting a "Server" class instance.
+- [`main.py`](main.py):  This is the main program, parsing input arguments and starting a "Server" class instance.
 
-- [server.py](server.py):  The “Server” class determines which reconstruction algorithm (e.g. "simplefft" or "invertcontrast") is used for the incoming data, based on the requested config information.
+- [`server.py`](server.py):  The “Server” class determines which reconstruction algorithm (e.g. "``simplefft``" or "``invertcontrast``") is used for the incoming data, based on the requested config information.
 
-- [connection.py](connection.py): The “Connection” class handles network communications to/from the client, parsing streaming messages of different types, as detailed in the section on MR Data Message Format.  The connection class also saves incoming data to MRD files if this option is selected.
+- [`client.py`](client.py): This script can be used to function as the client for an MRD streaming session, sending data from a file to a server and saving the received images to a different file.  Additional description of its usage is provided below.
 
-- [constants.py](constants.py): This file contains constants that define the message types of the MRD streaming data format.
+- [`connection.py`](connection.py): The “Connection” class handles network communications to/from the client, parsing streaming messages of different types, as detailed in the section on MR Data Message Format.  The connection class also saves incoming data to MRD files if this option is selected.
 
-- [mrdhelper.py](mrdhelper.py): This class contains helper functions for commonly used MRD tasks such as copying header information from raw data to image data and working with image metadata.
+- [`constants.py`](constants.py): This file contains constants that define the message types of the MRD streaming data format.
 
-- [simplefft.py](simplefft.py): This file contains code for performing a rudimentary image reconstruction from raw data, consisting of a Fourier transform, sum-of-squares coil combination, signal intensity normalization, and removal of phase oversampling.
+- [`mrdhelper.py`](mrdhelper.py): This class contains helper functions for commonly used MRD tasks such as copying header information from raw data to image data and working with image metadata.
 
-- [invertcontrast.py](invertcontrast.py): This program accepts both incoming raw data as well as image data.  The image contrast is inverted and images are sent back to the client.
+-   Utility functions:
 
-- [rgb.py](rgb.py): This program accepts incoming image data, applies a jet colormap, and sends RGB images back to the client.
+    - [`generate_cartesian_shepp_logan_dataset.py`](utils/generate_cartesian_shepp_logan_dataset.py): Creates an MRD raw data file of a Shepp-Logan phantom with Cartesian sampling.  Borrowed from the [ismrmrd-python-tools](https://github.com/ismrmrd/ismrmrd-python-tools) repository.
 
-- [analyzeflow.py](analyzeflow.py): This program accepts velocity phase contrast image data and performs basic masking.
+    - [`dicom2mrd.py`](utils/dicom2mrd.py): This program converts a folder of DICOM images to an MRD image ``.h5`` file, allowing DICOM images to be use as input for MRD streaming data.
 
-- [client.py](client.py): This script can be used to function as the client for an MRD streaming session, sending data from a file to a server and saving the received images to a different file.  Additional description of its usage is provided below.
+    - [`mrd2dicom.py`](utils/mrd2dicom.py): This program converts an MRD image ``.h5`` file to a folder of DICOM images.
 
-- [generate_cartesian_shepp_logan_dataset.py](generate_cartesian_shepp_logan_dataset.py): Creates an MRD raw data file of a Shepp-Logan phantom with Cartesian sampling.  Borrowed from the [ismrmrd-python-tools](https://github.com/ismrmrd/ismrmrd-python-tools) repository.
+    - [`mrd2gif.py`](utils/mrd2gif.py): This program converts an MRD image ``.h5`` file into an animated GIF for quick previews.
 
-- [dicom2mrd.py](dicom2mrd.py): This program converts a folder of DICOM images to an MRD image .h5 file, allowing DICOM images to be use as input for MRD streaming data.
+-   Example configs:
 
-- [mrd2dicom.py](mrd2dicom.py): This program converts an MRD image .h5 file to a folder of DICOM images.
+    - [`analyzeflow.py`](analyzeflow.py): This program accepts velocity phase contrast image data and performs basic masking.
 
-- [mrd2gif.py](mrd2gif.py): This program converts an MRD image .h5 file into an animated GIF for quick previews.
+    - [`invertcontrast.py`](config/invertcontrast.py): This program accepts both incoming raw data as well as image data.  The image contrast is inverted and images are sent back to the client.
+
+    - [`rgb.py`](config/rgb.py): This program accepts incoming image data, applies a jet colormap, and sends RGB images back to the client.
+
+    - [`simplefft.py`](config/simplefft.py): This file contains code for performing a rudimentary image reconstruction from raw data, consisting of a Fourier transform, sum-of-squares coil combination, signal intensity normalization, and removal of phase oversampling.
 
 ##  4. <a name='Savingincomingdata'></a>Saving incoming data
 It may be desirable for the MRD server to save a copy of incoming data from the client.  For example, if the client is an MRI scanner, then the saved data can be used for offline simulations at a later time.  This may be particularly useful when the MRI scanner client is sending image data, as images are not stored in a scanner's raw data file and would otherwise require offline simulation of the MRI scanner reconstruction as well.

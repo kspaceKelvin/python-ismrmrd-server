@@ -1,6 +1,7 @@
 # MRD Helper functions
 import ismrmrd
 import re
+import logging
 
 def update_img_header_from_raw(imgHead, rawHead):
     """Populate ImageHeader fields from AcquisitionHeader"""
@@ -47,13 +48,6 @@ def update_img_header_from_raw(imgHead, rawHead):
     imgHead.user_int               = rawHead.user_int
 
     return imgHead
-
-def get_meta_value(meta, key):
-    """Get a value from MRD Meta Attributes (returns None if key not found)"""
-    if key in meta.keys():
-        return meta[key]
-    else:
-        return None
 
 def extract_minihead_bool_param(miniHead, name):
     """Extract a bool parameter from the serialized text of the ICE MiniHeader"""
@@ -102,6 +96,33 @@ def extract_minihead_string_param(miniHead, name):
         return None
     else:
         return res.group(0).strip()
+
+def meta_fix_imagedirs(meta, header):
+    """Add image orientation directions to MetaAttributes if not already present"""
+    if meta.get('ImageRowDir') is None:
+        meta['ImageRowDir'] = ["{:.18f}".format(header.read_dir[0]), "{:.18f}".format(header.read_dir[1]), "{:.18f}".format(header.read_dir[2])]
+
+    if meta.get('ImageColumnDir') is None:
+        meta['ImageColumnDir'] = ["{:.18f}".format(header.phase_dir[0]), "{:.18f}".format(header.phase_dir[1]), "{:.18f}".format(header.phase_dir[2])]
+
+def check_metadata(metadata):
+    # Metadata should be MRD formatted header, but may be a string
+    # if it failed conversion earlier
+    try:
+        # Disabled due to incompatibility between PyXB and Python 3.8:
+        # https://github.com/pabigot/pyxb/issues/123
+        # # logging.info("Metadata: \n%s", metadata.toxml('utf-8'))
+        logging.info("Incoming dataset contains %d encodings", len(metadata.encoding))
+        logging.info("First encoding is of type '%s', with a field of view of (%s x %s x %s)mm^3 and a matrix size of (%s x %s x %s)",
+            metadata.encoding[0].trajectory,
+            metadata.encoding[0].encodedSpace.matrixSize.x,
+            metadata.encoding[0].encodedSpace.matrixSize.y,
+            metadata.encoding[0].encodedSpace.matrixSize.z,
+            metadata.encoding[0].encodedSpace.fieldOfView_mm.x,
+            metadata.encoding[0].encodedSpace.fieldOfView_mm.y,
+            metadata.encoding[0].encodedSpace.fieldOfView_mm.z)
+    except:
+        logging.info("Improperly formatted metadata: \n%s", metadata)
 
 def create_roi(x, y, rgb = (1, 0, 0), thickness = 1, style = 0, visibility = 1):
     """
