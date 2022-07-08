@@ -10,7 +10,7 @@ import constants
 import mrdhelper
 
 # TODO Prevent issuing a warning due to ignoring magnitude data
-SETTINGS = config.Settings(False, True, False, [], [], [ismrmrd.IMTYPE_PHASE], True)
+SETTINGS = config.Settings(False, True, False, [], [], [ismrmrd.IMTYPE_PHASE], ['slice'])
 
 
 def process_image(images, index, connection, metadata, debug_folder):

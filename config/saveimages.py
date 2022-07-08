@@ -11,7 +11,7 @@ SETTINGS = config.Settings(False, True, False, [], [],
                             ismrmrd.IMTYPE_REAL,
                             ismrmrd.IMTYPE_IMAG,
                             ismrmrd.IMTYPE_COMPLEX],
-                            True)
+                           ['slice'])
 
 
 def process_image(images, index, connection, metadata, debug_folder):

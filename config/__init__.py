@@ -15,20 +15,48 @@ DEBUGFOLDER = "/tmp/share/debug"
 
 DEFAULTCONFIG = 'null'
 
+
+class ImageIndices:
+    mask = None
+    _fields_ = ['measurement_uid',
+                'average',
+                'slice',
+                'contrast',
+                'phase',
+                'repetition',
+                'set',
+                'image_type',
+                'image_series_index']
+    def __init__(self, input):
+        if isinstance(input, ismrmrd.ImageHeader):
+            for field in ImageIndices._fields_:
+                setattr(self, field, getattr(input, field))
+        elif isinstance(input, list):
+            invalid = [item for item in input if item not in ImageIndices._fields_]
+            if invalid:
+                raise ImportError('Config specifies unknown image indexing attributes: ' + ', '.join(invalid))
+            for field in ImageIndices._fields_:
+                setattr(self, field, 0 if field in input else 1)
+    def __eq__(self, indices):
+        assert ImageIndices.mask is not None
+        return all(getattr(self, field) == getattr(indices, field) for field in [item for item in ImageIndices._fields_ if getattr(ImageIndices.mask, item)])
+    def __ne__(self, indices):
+        assert ImageIndices.mask is not None
+        return any(getattr(self, field) != getattr(indices, field) for field in [item for item in ImageIndices._fields_ if getattr(ImageIndices.mask, item)])
+    def __sub__(self, indices):
+        assert ImageIndices.mask is not None
+        return [item for item in ImageIndices._fields_ if getattr(ImageIndices.mask, item) and getattr(self, item) != getattr(indices, item)]
+
+
 # Control what information the individual configs need to specify
 # - "keep_acq": bool: Store acquisition data in RAM, call module's process_acquisition() function when appropriate
 # - "keep_image": bool: Store image data in RAM, call module's process_image() function when appropriate
 # - "keep_waveform": bool: Store waveform data in RAM; not currently utilised
 # - "acq_ignore": list: Specify ismrmrd flags relating to acquisition data that should be ignored during data load
-# - "acq_trigger": list: Specify ismrmrd flags relating to acquisition data that should trigger the module's process_acquisition() function once completed
+# - "acq_trigger": list: Specify ismrmrd flags relating to acquisition data that should trigger the module's process_acquisition() function once detected
 # - "image_select": list: Specify ismrmrd flags relating to image data that should be retained during data load
-# - "image_trigger": bool: Controls whether module's process_image() function should be triggered for individual images
-Settings = namedtuple('Settings', ['keep_acq', 'keep_image', 'keep_waveform', 'acq_ignore', 'acq_trigger', 'image_select', 'image_trigger'])
-
-# TODO Hypothetically, could have "image_trigger" be not a bool, but a set of conditions upon which process_image() will be called
-# For instance, if magnitude & phase data were to come in interleaved, but you wanted to retain only magnitude data,
-#   and not load the phase data / data across all Images, you'd need to indicate that you want to trigger based on a
-#   series index change but not a data type change.
+# - "image_collect": list: Specify flags relating to image header data that should not trigger the module's process_image() function if they vary
+Settings = namedtuple('Settings', ['keep_acq', 'keep_image', 'keep_waveform', 'acq_ignore', 'acq_trigger', 'image_select', 'image_collect'])
 
 
 def process(connection, config, metadata):
@@ -45,6 +73,7 @@ def process(connection, config, metadata):
         logging.info("Unrecognised config '%s'; falling back to '%s'", config, DEFAULTCONFIG)
         module = importlib.import_module('config.' + DEFAULTCONFIG)
     settings = module.SETTINGS
+    ImageIndices.mask = ImageIndices(settings.image_collect)
     logging.debug('Settings for selected config: %s', settings)
 
     mrdhelper.check_metadata(metadata)
@@ -60,10 +89,10 @@ def process(connection, config, metadata):
     # Continuously parse incoming data parsed from MRD messages
     # Only store in RAM those data that are of interest to the config
     acquisition_group = []
-    acquisition_index = 0
+    acquisition_group_counter = 0
     image_group = []
-    image_series_index = 0
-    image_series_type = None
+    image_group_counter = 0
+    image_group_indices = None
     waveform_group = []
 
     acq_ignored = 0
@@ -89,11 +118,13 @@ def process(connection, config, metadata):
                         # data, which returns images that are sent back to the client.
                         if any(item.is_flag_set(flag) for flag in settings.acq_trigger):
                             logging.info("Processing a group of k-space data (explicitly triggered)")
-                            image = module.process_acquisition(acquisition_group, acquisition_index, connection, metadata, config_debug_folder)
+                            image = module.process_acquisition(acquisition_group, acquisition_group_counter, connection, metadata, config_debug_folder)
+                            # TODO No guarantee that what the module will produce here is one or more images;
+                            #   it could for instance modify the k-space data but still yield k-space data
                             if image:
                                 connection.send_image(image)
                             acquisition_group = []
-                            acquisition_index += 1
+                            acquisition_group_counter += 1
                     else:
                         acq_wrongtype += 1
                 else:
@@ -102,22 +133,22 @@ def process(connection, config, metadata):
             elif isinstance(item, ismrmrd.Image):
 
                 if settings.keep_image:
-                    if any(item.is_flag_set(flag) for flag in settings.image_select):
-
-                        if image_series_type is None:
-                            image_series_type = item.image_type
+                    if item.image_type in settings.image_select:
+                        header = item.getHead()
+                        if image_group_indices is None:
+                            image_group_indices = ImageIndices(header)
                         # When this criteria is met, run process_image() on the accumulated
                         # data, which returns images that are sent back to the client.
                         # e.g. when the series number changes:
-                        if settings.image_trigger and (item.image_type != image_series_type or item.image_series_index != image_series_index):
-                            logging.info("Processing a group of images; previously was <type %d index %d>; now <type %d index %d>",
-                                image_series_type, image_series_index, item.image_type, item.image_series_index)
-                            image = module.process_image(image_group, image_series_index, connection, metadata, config_debug_folder)
+                        image_indices = ImageIndices(header)
+                        if image_indices != image_group_indices:
+                            logging.info("Processing an image group due to change in: " + ', '.join(image_indices - image_group_indices))
+                            image = module.process_image(image_group, image_group_counter, connection, metadata, config_debug_folder)
                             if image:
                                 connection.send_image(image)
-                            image_series_index = item.image_series_index
-                            image_series_type = item.image_type
                             image_group = []
+                            image_group_counter += 1
+                            image_group_indices = image_indices
                         image_group.append(item)
                     else:
                         image_wrongtype += 1
@@ -150,14 +181,14 @@ def process(connection, config, metadata):
         # image in a series is typically not separately flagged.
         if acquisition_group:
             logging.info("Processing a group of k-space data (end of data stream)")
-            image = module.process_acquisition(acquisition_group, acquisition_index, connection, metadata, config_debug_folder)
+            image = module.process_acquisition(acquisition_group, acquisition_group_counter, connection, metadata, config_debug_folder)
             if image:
                 connection.send_image(image)
             acquisition_group = []
 
         if image_group:
             logging.info("Processing a group of images (end of data stream)")
-            image = module.process_image(image_group, image_series_index, connection, metadata, config_debug_folder)
+            image = module.process_image(image_group, image_group_counter, connection, metadata, config_debug_folder)
             if image:
                 connection.send_image(image)
             image_group = []

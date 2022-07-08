@@ -7,7 +7,7 @@ import xml.dom.minidom
 import config
 import mrdhelper
 
-SETTINGS = config.Settings(False, True, False, [], [], [ismrmrd.IMTYPE_MAGNITUDE], True)
+SETTINGS = config.Settings(False, True, False, [], [], [ismrmrd.IMTYPE_MAGNITUDE], ['slice'])
 
 
 def process_image(images_in, index, connection, metadata, debug_folder):

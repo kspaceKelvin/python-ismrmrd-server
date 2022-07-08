@@ -14,7 +14,7 @@ SETTINGS = config.Settings(True, True, False,
                             ismrmrd.IMTYPE_REAL,
                             ismrmrd.IMTYPE_IMAG,
                             ismrmrd.IMTYPE_COMPLEX],
-                            True)
+                           ['slice'])
 
 
 def process_acquisition(group, index, connection, metadata, debug_folder):

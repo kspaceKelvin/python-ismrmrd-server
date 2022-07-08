@@ -1,3 +1,3 @@
 import config
 
-SETTINGS = config.Settings(False, False, False, [], [], [], False)
+SETTINGS = config.Settings(False, False, False, [], [], [], [])

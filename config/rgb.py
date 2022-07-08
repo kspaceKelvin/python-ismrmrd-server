@@ -18,7 +18,7 @@ SETTINGS = config.Settings(True, True, False,
                             ismrmrd.ACQ_IS_PHASECORR_DATA],
                            [ismrmrd.ACQ_LAST_IN_SLICE],
                            [ismrmrd.IMTYPE_MAGNITUDE, 0],
-                           True)
+                           ['slice'])
 
 
 def process_acquisition(group, index, connection, metadata, debug_folder):

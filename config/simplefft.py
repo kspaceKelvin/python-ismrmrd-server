@@ -14,7 +14,7 @@ SETTINGS = config.Settings(True, False, False,
                             ismrmrd.ACQ_IS_SURFACECOILCORRECTIONSCAN_DATA],
                            [ismrmrd.ACQ_LAST_IN_SLICE],
                            [],
-                           True)
+                           [])
 
 
 def process_acquisition(group, index, connection, metadata, debug_folder):
