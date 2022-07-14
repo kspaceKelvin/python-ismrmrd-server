@@ -1,7 +1,6 @@
 import importlib
 import ismrmrd
 import logging
-import numpy as np
 import os
 import traceback
 from collections import namedtuple
@@ -62,8 +61,10 @@ Settings = namedtuple('Settings', ['keep_acq', 'keep_image', 'keep_waveform', 'a
 def process(connection, config, metadata):
 
     logging.info("Config: %s", config)
+    # TODO Would prefer to have a more robust technique for loading the module relative to the location of __file__;
+    #   this current solution relies on setting PYTHONPATH
     try:
-        module = importlib.import_module('config.' + config)
+        module = importlib.import_module(config)
         logging.info("Opened config %s", config)
     except ImportError as exc:
         if exc.__traceback__.tb_next is not None:
