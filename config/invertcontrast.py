@@ -22,7 +22,7 @@ SETTINGS = config.Settings(True, True, False,
                            ['slice'])
 
 
-def process_acquisition(group, index, connection, metadata, debug_folder):
+def process_acquisition(group, index, connection, metadata):
     # Start timer
     tic = perf_counter()
 
@@ -31,10 +31,10 @@ def process_acquisition(group, index, connection, metadata, debug_folder):
     phs = [acquisition.idx.phase                for acquisition in group]
 
     # Use the zero-padded matrix size
-    data = np.zeros((group[0].data.shape[0], 
-                     metadata.encoding[0].encodedSpace.matrixSize.y, 
-                     metadata.encoding[0].encodedSpace.matrixSize.x, 
-                     max(phs)+1), 
+    data = np.zeros((group[0].data.shape[0],
+                     metadata.encoding[0].encodedSpace.matrixSize.y,
+                     metadata.encoding[0].encodedSpace.matrixSize.x,
+                     max(phs)+1),
                     group[0].data.dtype)
 
     rawHead = [None]*(max(phs)+1)
@@ -50,9 +50,14 @@ def process_acquisition(group, index, connection, metadata, debug_folder):
 
     # Flip matrix in RO/PE to be consistent with ICE
     data = np.flip(data, (1, 2))
-
     logging.debug("Raw data is size %s" % (data.shape,))
-    np.save(os.path.join(debug_folder, "raw" + str(index) + ".npy"), data)
+
+    debug_dir = os.path.join(config.SHAREDIR, 'debug', 'invertcontrast')
+    try:
+        os.makedirs(debug_dir)
+    except FileExistsError:
+        pass
+    np.save(os.path.join(debug_dir, "raw" + str(index) + ".npy"), data)
 
     # Remove readout oversampling
     data = fft.ifft(data, axis=2)
@@ -60,7 +65,7 @@ def process_acquisition(group, index, connection, metadata, debug_folder):
     data = fft.fft( data, axis=2)
 
     logging.debug("Raw data is size after readout oversampling removal %s" % (data.shape,))
-    np.save(os.path.join(debug_folder, "raw" + str(index) + "NoOS.npy"), data)
+    np.save(os.path.join(debug_dir, "raw" + str(index) + "NoOS.npy"), data)
 
     # Fourier Transform
     data = fft.fftshift( data, axes=(1, 2))
@@ -75,7 +80,7 @@ def process_acquisition(group, index, connection, metadata, debug_folder):
     data = np.sqrt(data)
 
     logging.debug("Image data is size %s" % (data.shape,))
-    np.save(os.path.join(debug_folder, "img" + str(index) + ".npy"), data)
+    np.save(os.path.join(debug_dir, "img" + str(index) + ".npy"), data)
 
     # Normalize and convert to int16
     data *= 32767/data.max()
@@ -91,7 +96,7 @@ def process_acquisition(group, index, connection, metadata, debug_folder):
     data = data[offset:offset+metadata.encoding[0].reconSpace.matrixSize.y,:]
 
     logging.debug("Image without oversampling is size %s" % (data.shape,))
-    np.save(os.path.join(debug_folder, "img" + str(index) + "Crop.npy"), data)
+    np.save(os.path.join(debug_dir, "img" + str(index) + "Crop.npy"), data)
 
     # Measure processing time
     toc = perf_counter()
@@ -112,8 +117,8 @@ def process_acquisition(group, index, connection, metadata, debug_folder):
 
         # Set the header information
         tmpImg.setHead(mrdhelper.update_img_header_from_raw(tmpImg.getHead(), rawHead[phs]))
-        tmpImg.field_of_view = (ctypes.c_float(metadata.encoding[0].reconSpace.fieldOfView_mm.x), 
-                                ctypes.c_float(metadata.encoding[0].reconSpace.fieldOfView_mm.y), 
+        tmpImg.field_of_view = (ctypes.c_float(metadata.encoding[0].reconSpace.fieldOfView_mm.x),
+                                ctypes.c_float(metadata.encoding[0].reconSpace.fieldOfView_mm.y),
                                 ctypes.c_float(metadata.encoding[0].reconSpace.fieldOfView_mm.z))
         tmpImg.image_index = phs
 
@@ -131,13 +136,13 @@ def process_acquisition(group, index, connection, metadata, debug_folder):
         imagesOut.append(tmpImg)
 
     # Call process_image() to invert image contrast
-    imagesOut = process_image(imagesOut, 0, connection, metadata, debug_folder)
+    imagesOut = process_image(imagesOut, 0, connection, metadata)
 
     return imagesOut
 
 
 
-def process_image(images, index, connection, metadata, debug_folder):
+def process_image(images, index, connection, metadata):
 
     logging.debug("Processing data with %d images of type %s", len(images), ismrmrd.get_dtype_from_data_type(images[0].data_type))
 
@@ -159,7 +164,13 @@ def process_image(images, index, connection, metadata, debug_folder):
         logging.debug("IceMiniHead[0]: %s", base64.b64decode(meta[0]['IceMiniHead']).decode('utf-8'))
 
     logging.debug("Original image data is size %s" % (data.shape,))
-    np.save(os.path.join(debug_folder, "imgOrig.npy"), data)
+
+    debug_dir = os.path.join(config.SHAREDIR, 'debug', 'invertcontrast')
+    try:
+        os.makedirs(debug_dir)
+    except FileExistsError:
+        pass
+    np.save(os.path.join(debug_dir, "imgOrig.npy"), data)
 
     # Normalize and convert to int16
     data = data.astype(np.float64)
@@ -171,7 +182,7 @@ def process_image(images, index, connection, metadata, debug_folder):
     data = 32767-data
     data = np.abs(data)
     data = data.astype(np.int16)
-    np.save(os.path.join(debug_folder, "imgInverted.npy"), data)
+    np.save(os.path.join(debug_dir, "imgInverted.npy"), data)
 
     # Re-slice back into 2D images
     imagesOut = [None] * data.shape[-1]

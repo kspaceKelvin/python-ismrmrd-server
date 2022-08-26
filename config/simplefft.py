@@ -17,14 +17,19 @@ SETTINGS = config.Settings(True, False, False,
                            [])
 
 
-def process_acquisition(group, index, connection, metadata, debug_folder):
+def process_acquisition(group, index, connection, metadata):
 
     # Format data into single [cha RO PE] array
     data = [acquisition.data for acquisition in group]
     data = np.stack(data, axis=-1)
-
     logging.debug("Raw data is size %s" % (data.shape,))
-    np.save(os.path.join(debug_folder, "raw" + str(index) + ".npy"), data)
+
+    debug_dir = os.path.join(config.SHAREDIR, 'debug', 'simplefft')
+    try:
+        os.makedirs(debug_dir)
+    except FileExistsError:
+        pass
+    np.save(os.path.join(debug_dir, "raw" + str(index) + ".npy"), data)
 
     # Remove readout oversampling
     data = fft.ifft(data, axis=1)
@@ -32,7 +37,7 @@ def process_acquisition(group, index, connection, metadata, debug_folder):
     data = fft.fft( data, axis=1)
 
     logging.debug("Raw data is size after readout oversampling removal %s" % (data.shape,))
-    np.save(os.path.join(debug_folder, "raw" + str(index) + "NoOS.npy"), data)
+    np.save(os.path.join(debug_dir, "raw" + str(index) + "NoOS.npy"), data)
 
     # Fourier Transform
     data = fft.fftshift( data, axes=(1, 2))
@@ -46,7 +51,7 @@ def process_acquisition(group, index, connection, metadata, debug_folder):
     data = np.sqrt(data)
 
     logging.debug("Image data is size %s" % (data.shape,))
-    np.save(os.path.join(debug_folder, "img" + str(index) + ".npy"), data)
+    np.save(os.path.join(debug_dir, "img" + str(index) + ".npy"), data)
 
     # Normalize and convert to int16
     data *= 32767/data.max()
@@ -62,7 +67,7 @@ def process_acquisition(group, index, connection, metadata, debug_folder):
     data = data[:,offset:offset+metadata.encoding[0].reconSpace.matrixSize.y]
 
     logging.debug("Image without oversampling is size %s" % (data.shape,))
-    np.save(os.path.join(debug_folder, "img" + str(index) + "Crop.npy"), data)
+    np.save(os.path.join(debug_dir, "img" + str(index) + "Crop.npy"), data)
 
     # Format as ISMRMRD image data
     # data has shape [RO PE], i.e. [x y].
@@ -73,7 +78,7 @@ def process_acquisition(group, index, connection, metadata, debug_folder):
 
     # Set field of view
     image.field_of_view = (ctypes.c_float(metadata.encoding[0].reconSpace.fieldOfView_mm.x),
-                           ctypes.c_float(metadata.encoding[0].reconSpace.fieldOfView_mm.y), 
+                           ctypes.c_float(metadata.encoding[0].reconSpace.fieldOfView_mm.y),
                            ctypes.c_float(metadata.encoding[0].reconSpace.fieldOfView_mm.z))
 
     # Set ISMRMRD Meta Attributes

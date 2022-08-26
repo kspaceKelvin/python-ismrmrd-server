@@ -13,7 +13,7 @@ import mrdhelper
 SETTINGS = config.Settings(False, True, False, [], [], [ismrmrd.IMTYPE_PHASE], ['slice'])
 
 
-def process_image(images, index, connection, metadata, debug_folder):
+def process_image(images, index, connection, metadata):
 
     # Start timer
     tic = perf_counter()
@@ -63,14 +63,21 @@ def process_image(images, index, connection, metadata, debug_folder):
                 meta[sli][phs]    = ismrmrd.Meta.deserialize(img.attribute_string)
 
         logging.debug("Phase data with venc encoding %s is size %s" % (venc_dir, data.shape,))
-        np.save(os.path.join(debug_folder, "data_" + venc_dir + ".npy"), data)
+
+        debug_dir = os.path.join(config.SHAREDIR, 'debug', 'analyzeflow')
+        try:
+            os.makedirs(debug_dir)
+        except FileExistsError:
+            pass
+
+        np.save(os.path.join(debug_dir, "data_" + venc_dir + ".npy"), data)
 
         # Mask out data with high mean temporal diff
         threshold = 250
         data_meandiff = np.mean(np.abs(np.diff(data,3)),3)
         data_masked = data
         data_masked[(data_meandiff > threshold)] = 2048
-        np.save(os.path.join(debug_folder, "data_masked_" + venc_dir + ".npy"), data_masked)
+        np.save(os.path.join(debug_dir, "data_masked_" + venc_dir + ".npy"), data_masked)
 
         # Normalize and convert to int16
         data_masked = (data_masked.astype(np.float64) - 2048)*32767/2048

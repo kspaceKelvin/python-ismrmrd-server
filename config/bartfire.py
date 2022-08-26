@@ -19,7 +19,7 @@ SETTINGS = config.Settings(True, False, False,
                            [])
 
 
-def process_acquisition(group, index, connection, metadata, debug_folder):
+def process_acquisition(group, index, connection, metadata):
 
     # Format data into single [cha PE RO phs] array
     lin = [acquisition.idx.kspace_encode_step_1 for acquisition in group]
@@ -48,9 +48,14 @@ def process_acquisition(group, index, connection, metadata, debug_folder):
 
     # Format as [row col phs cha] for BART
     data = data.transpose((1, 2, 3, 0))
-
     logging.debug("Raw data is size %s" % (data.shape,))
-    np.save(os.path.join(debug_folder, "raw" + str(index) + ".npy"), data)
+
+    debug_dir = os.path.join(config.SHAREDIR, 'debug', 'bartfire')
+    try:
+        os.makedirs(debug_dir)
+    except FileExistsError:
+        pass
+    np.save(os.path.join(debug_dir, "raw" + str(index) + ".npy"), data)
 
     # Fourier Transform with BART
     logging.info("Calling BART FFT")
@@ -67,7 +72,7 @@ def process_acquisition(group, index, connection, metadata, debug_folder):
     data = np.sqrt(data)
 
     logging.debug("Image data is size %s" % (data.shape,))
-    np.save(os.path.join(debug_folder, "img" + str(index) + ".npy"), data)
+    np.save(os.path.join(debug_dir, "img" + str(index) + ".npy"), data)
 
     # Normalize and convert to int16
     data *= 32767/data.max()
@@ -83,7 +88,7 @@ def process_acquisition(group, index, connection, metadata, debug_folder):
     data = data[offset:offset+metadata.encoding[0].reconSpace.matrixSize.y,:]
 
     logging.debug("Image without oversampling is size %s" % (data.shape,))
-    np.save(os.path.join(debug_folder, "img" + str(index) + "Crop.npy"), data)
+    np.save(os.path.join(debug_dir, "img" + str(index) + "Crop.npy"), data)
 
     # Format as ISMRMRD image data
     imagesOut = []
@@ -96,8 +101,8 @@ def process_acquisition(group, index, connection, metadata, debug_folder):
 
         # Set the header information
         tmpImg.setHead(mrdhelper.update_img_header_from_raw(tmpImg.getHead(), rawHead[phs]))
-        tmpImg.field_of_view = (ctypes.c_float(metadata.encoding[0].reconSpace.fieldOfView_mm.x), 
-                                ctypes.c_float(metadata.encoding[0].reconSpace.fieldOfView_mm.y), 
+        tmpImg.field_of_view = (ctypes.c_float(metadata.encoding[0].reconSpace.fieldOfView_mm.x),
+                                ctypes.c_float(metadata.encoding[0].reconSpace.fieldOfView_mm.y),
                                 ctypes.c_float(metadata.encoding[0].reconSpace.fieldOfView_mm.z))
         tmpImg.image_index = phs
 

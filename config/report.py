@@ -18,7 +18,7 @@ SETTINGS = config.Settings(True, True, True,
                             # Only separate process_image() calls for 'image_series_index'
 
 
-def process_acquisition(group, index, connection, metadata, debug_folder):
+def process_acquisition(group, index, connection, metadata):
 
     logging.info('Running process_acquisition() for index ' + str(index) + ': ' + str(len(group)) + ' entries in group')
     # if all(item.data.shape == group[0].data.shape for item in group[1:]):
@@ -39,7 +39,7 @@ def process_acquisition(group, index, connection, metadata, debug_folder):
 
 
 
-def process_image(images, index, connection, metadata, debug_folder):
+def process_image(images, index, connection, metadata):
 
     logging.info('Running process_image() for index ' + str(index) + ': ' + str(len(images)) + ' entries in group')
     for index, item in enumerate(images):

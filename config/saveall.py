@@ -17,17 +17,17 @@ SETTINGS = config.Settings(True, True, False,
                            ['slice'])
 
 
-def process_acquisition(group, index, connection, metadata, debug_folder):
+def process_acquisition(group, index, connection, metadata):
 
     # Format data into single [cha PE RO phs] array
     lin = [acquisition.idx.kspace_encode_step_1 for acquisition in group]
     phs = [acquisition.idx.phase                for acquisition in group]
 
     # Use the zero-padded matrix size
-    data = np.zeros((group[0].data.shape[0], 
-                     metadata.encoding[0].encodedSpace.matrixSize.y, 
-                     metadata.encoding[0].encodedSpace.matrixSize.x, 
-                     max(phs)+1), 
+    data = np.zeros((group[0].data.shape[0],
+                     metadata.encoding[0].encodedSpace.matrixSize.y,
+                     metadata.encoding[0].encodedSpace.matrixSize.x,
+                     max(phs)+1),
                      group[0].data.dtype)
 
     rawHead = [None]*(max(phs)+1)
@@ -43,15 +43,20 @@ def process_acquisition(group, index, connection, metadata, debug_folder):
 
     # Flip matrix in RO/PE to be consistent with ICE
     data = np.flip(data, (1, 2))
-
     logging.info("Raw data is size %s" % (data.shape,))
-    np.save(os.path.join(debug_folder, "raw" + str(index) + ".npy"), data)
+
+    debug_dir = os.path.join(config.SHAREDIR, 'debug', 'saveall')
+    try:
+        os.makedirs(debug_dir)
+    except FileExistsError:
+        pass
+    np.save(os.path.join(debug_dir, "raw" + str(index) + ".npy"), data)
 
     return group
 
 
 
-def process_image(images, index, connection, metadata, debug_folder):
+def process_image(images, index, connection, metadata):
 
     logging.debug("Processing data with %d images of type %s", len(images), ismrmrd.get_dtype_from_data_type(images[0].data_type))
 
@@ -64,8 +69,13 @@ def process_image(images, index, connection, metadata, debug_folder):
 
     # Reformat data to [y x z cha img], i.e. [row col] for the first two dimensions
     data = data.transpose((3, 4, 2, 1, 0))
-
     logging.debug("Original image data is size %s" % (data.shape,))
-    np.save(os.path.join(debug_folder, "image" + str(index) + ".npy"), data)
+
+    debug_dir = os.path.join(config.SHAREDIR, 'debug', 'saveall')
+    try:
+        os.makedirs(debug_dir)
+    except FileExistsError:
+        pass
+    np.save(os.path.join(debug_dir, "image" + str(index) + ".npy"), data)
 
     return images

@@ -8,9 +8,8 @@ from collections import namedtuple
 import constants
 import mrdhelper
 
-# Root folder for debug output files
-# Put contents written by a specific config to a named sub-directory
-DEBUGFOLDER = "/tmp/share/debug"
+# TODO Just provide configs with the root share directory; they can choose what to do from there
+SHAREDIR = "/tmp/share"
 
 DEFAULTCONFIG = 'null'
 
@@ -58,8 +57,18 @@ class ImageIndices:
 Settings = namedtuple('Settings', ['keep_acq', 'keep_image', 'keep_waveform', 'acq_ignore', 'acq_trigger', 'image_select', 'image_collect'])
 
 
+
+# TODO Simple convenience function to give path to code / debug / share directory for any given config,
+#   creating said directory if it does not yet exist
+# Would it be necessary to use inspect module to find config name?
+
+
+
 def process(connection, config, metadata):
 
+    # TODO Support usage where "config" is not a string, but a path to an XML file
+    # This seemingly has some precedent with Gadgetron?
+    # Would allow better handling of eg. scout2b1 toggling whether or not to pass images to injector
     logging.info("Config: %s", config)
     try:
         module = importlib.import_module('config.' + config)
@@ -76,14 +85,6 @@ def process(connection, config, metadata):
     logging.debug('Settings for selected config: %s', settings)
 
     mrdhelper.check_metadata(metadata)
-
-    # Create folder, if necessary
-    config_debug_folder = os.path.join(DEBUGFOLDER, config)
-    if not os.path.exists(config_debug_folder):
-        os.makedirs(config_debug_folder)
-        logging.info("Created folder " + config_debug_folder + " for debug output files")
-    else:
-        logging.debug("Debugging folder \"" + config_debug_folder + "\" already exists")
 
     # Continuously parse incoming data parsed from MRD messages
     # Only store in RAM those data that are of interest to the config
@@ -117,7 +118,7 @@ def process(connection, config, metadata):
                         # data, which returns images that are sent back to the client.
                         if any(item.is_flag_set(flag) for flag in settings.acq_trigger):
                             logging.info("Processing a group of k-space data (explicitly triggered)")
-                            image = module.process_acquisition(acquisition_group, acquisition_group_counter, connection, metadata, config_debug_folder)
+                            image = module.process_acquisition(acquisition_group, acquisition_group_counter, connection, metadata)
                             # TODO No guarantee that what the module will produce here is one or more images;
                             #   it could for instance modify the k-space data but still yield k-space data
                             if image:
@@ -142,7 +143,7 @@ def process(connection, config, metadata):
                         image_indices = ImageIndices(header)
                         if image_indices != image_group_indices:
                             logging.info("Processing an image group due to change in: " + ', '.join(image_indices - image_group_indices))
-                            image = module.process_image(image_group, image_group_counter, connection, metadata, config_debug_folder)
+                            image = module.process_image(image_group, image_group_counter, connection, metadata)
                             if image:
                                 connection.send_image(image)
                             image_group = []
@@ -180,14 +181,14 @@ def process(connection, config, metadata):
         # image in a series is typically not separately flagged.
         if acquisition_group:
             logging.info("Processing a group of k-space data (end of data stream)")
-            image = module.process_acquisition(acquisition_group, acquisition_group_counter, connection, metadata, config_debug_folder)
+            image = module.process_acquisition(acquisition_group, acquisition_group_counter, connection, metadata)
             if image:
                 connection.send_image(image)
             acquisition_group = []
 
         if image_group:
             logging.info("Processing a group of images (end of data stream)")
-            image = module.process_image(image_group, image_group_counter, connection, metadata, config_debug_folder)
+            image = module.process_image(image_group, image_group_counter, connection, metadata)
             if image:
                 connection.send_image(image)
             image_group = []

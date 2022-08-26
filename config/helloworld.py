@@ -10,7 +10,7 @@ import mrdhelper
 SETTINGS = config.Settings(False, True, False, [], [], [ismrmrd.IMTYPE_MAGNITUDE], ['slice'])
 
 
-def process_image(images_in, index, connection, metadata, debug_folder):
+def process_image(images_in, index, connection, metadata):
 
     logging.debug("Processing data with %d images of type %s", len(images_in), ismrmrd.get_dtype_from_data_type(images_in[0].data_type))
 
@@ -22,7 +22,13 @@ def process_image(images_in, index, connection, metadata, debug_folder):
     meta = [ismrmrd.Meta.deserialize(img.attribute_string) for img in images_in]
 
     logging.debug("Original image data is size %s" % (data.shape,))
-    np.save(os.path.join(debug_folder, "image" + str(index) + ".npy"), data)
+
+    debug_dir = os.path.join(config.SHAREDIR, 'debug', 'helloworld')
+    try:
+        os.makedirs(debug_dir)
+    except FileExistsError:
+        pass
+    np.save(os.path.join(debug_dir, "image" + str(index) + ".npy"), data)
 
     # Re-slice back into 2D images
     images_out = [None] * data.shape[0]
