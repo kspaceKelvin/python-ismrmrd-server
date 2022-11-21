@@ -2,6 +2,7 @@
 import ismrmrd
 import re
 import logging
+import base64
 
 def update_img_header_from_raw(imgHead, rawHead):
     """Populate ImageHeader fields from AcquisitionHeader"""
@@ -49,53 +50,95 @@ def update_img_header_from_raw(imgHead, rawHead):
 
     return imgHead
 
+
+def get_userParameterLong_value(metadata, name):
+    """Get a value from MRD Header userParameterLong (returns None if key not found)"""
+    for param in metadata.userParameters.userParameterLong:
+        if param.name == name:
+            return int(param.value)
+    return None
+
+def get_userParameterDouble_value(metadata, name):
+    """Get a value from MRD Header userParameterDouble (returns None if key not found)"""
+    for param in metadata.userParameters.userParameterDouble:
+        if param.name == name:
+            return float(param.value)
+    return None
+
+def get_userParameterString_value(metadata, name):
+    """Get a value from MRD Header userParameterDouble (returns None if key not found)"""
+    for param in metadata.userParameters.userParameterDouble:
+        if param.name == name:
+            return float(param.value)
+    return None
+
+def get_userParameterBase64_value(metadata, name):
+    """Get a value from MRD Header userParameterBase64 (returns None if key not found)"""
+    for param in metadata.userParameters.userParameterBase64:
+        if param.name == name:
+            return base64.b64decode(param.value).decode('utf-8')
+    return None
+
+def get_meta_value(meta, key):
+    """Get a value from MRD Meta Attributes (returns None if key not found)"""
+    if key in meta.keys():
+        return meta[key]
+    else:
+        return None
+
 def extract_minihead_bool_param(miniHead, name):
     """Extract a bool parameter from the serialized text of the ICE MiniHeader"""
-    # Note: if missing, return false (following ICE logic)
-    expr = r'(?<=<ParamBool."' + name + r'">{)\s*[^}]*\s*'
-    res = re.search(expr, miniHead)
+    val = extract_minihead_param(miniHead, name, 'ParamBool')
 
-    if res is None:
+    if val is None:
         return False
+    elif val.strip('" ').lower() == 'true'.lower():
+        return True
     else:
-        if res.group(0).strip().lower() == '"true"'.lower():
-            return True
-        else:
-            return False
+        return False
 
 def extract_minihead_long_param(miniHead, name):
     """Extract a long parameter from the serialized text of the ICE MiniHeader"""
-    expr = r'(?<=<ParamLong."' + name + r'">{)\s*\d*\s*'
-    res = re.search(expr, miniHead)
+    val = extract_minihead_param(miniHead, name, 'ParamLong')
 
-    if res is None:
-        return None
-    elif res.group(0).isspace():
-        return 0
+    if val is None:
+        return int(0)
     else:
-        return int(res.group(0))
+        return int(val)
 
 def extract_minihead_double_param(miniHead, name):
     """Extract a double parameter from the serialized text of the ICE MiniHeader"""
-    expr = r'(?<=<ParamDouble."' + name + r'">{)\s*[^}]*\s*'
-    res = re.search(expr, miniHead)
+    val = extract_minihead_param(miniHead, name, 'ParamDouble')
 
-    if res is None:
-        return None
-    elif res.group(0).isspace():
+    if val is None:
         return float(0)
     else:
-        return float(res.group(0))
+        return float(val)
 
 def extract_minihead_string_param(miniHead, name):
     """Extract a string parameter from the serialized text of the ICE MiniHeader"""
-    expr = r'(?<=<ParamString."' + name + r'">{)\s*[^}]*\s*'
+    val = extract_minihead_param(miniHead, name, 'ParamString')
+
+    return val.strip(' "')
+
+def extract_minihead_param(miniHead, name, strType):
+    """Extract a string parameter from the serialized text of the ICE MiniHeader"""
+    expr = r'(?<=<' + strType + r'."' + name + r'">)\s*[^}]*\s*'
     res = re.search(expr, miniHead)
 
     if res is None:
         return None
+
+    # Strip off beginning '{' and whitespace, then split on newlines
+    values = res.group(0).strip('{\n ').split('\n')
+
+    # Lines beginning with <> are properties -- ignore them
+    values = [val for val in values if bool(re.search(r'^\s*<\w+>', val)) is False]
+
+    if len(values) != 1:
+        return None
     else:
-        return res.group(0).strip()
+        return values[0]
 
 def meta_fix_imagedirs(meta, header):
     """Add image orientation directions to MetaAttributes if not already present"""

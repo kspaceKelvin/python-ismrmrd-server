@@ -239,9 +239,9 @@ def main(args):
     dset.close()
 
     logging.info("---------------------- Summary ----------------------")
-    logging.info("Sent %4d acquisitions  |  Received %4d acquisitions", connection.sentAcqs,      recvWaveforms.value)
-    logging.info("Sent %4d images        |  Received %4d images",       connection.sentImages,    recvImages.value)
-    logging.info("Sent %4d waveforms     |  Received %4d waveforms",    connection.sentWaveforms, recvWaveforms.value)
+    logging.info("Sent %5d acquisitions  |  Received %5d acquisitions", connection.sentAcqs,      recvWaveforms.value)
+    logging.info("Sent %5d images        |  Received %5d images",       connection.sentImages,    recvImages.value)
+    logging.info("Sent %5d waveforms     |  Received %5d waveforms",    connection.sentWaveforms, recvWaveforms.value)
     logging.info("Session complete")
 
     return
