@@ -10,14 +10,20 @@ from collections import namedtuple
 import constants
 import mrdhelper
 
-# Just provide configs with the root share directory; they can choose what to do from there
-# TODO Would be preferable for this to be an environment variable that is set within the server environment prior to execution
-# Since I suspect it's not possible to pass custom environment variables to a chroot environment,
-#   consider making the chroot share path the default, and other environments can override
-#SHAREDIR = os.path.join(os.sep, 'tmp', 'share')
-SHAREDIR = os.path.join('D:', os.sep, 'Scout2B1', 'share')
 
+
+# Set up path to shared location
+# When executing FIRE server in a chroot environment with configured filesystem mount points,
+#   this path is known a priori based on the chroot mounting call;
+#   but if eg. executing server natively in Python, it needs to be possible to specify such a path explicitly.
+SHAREDIR_ENVVAR = 'SIEMENS_FIRE_SHARE_DIR'
+SHAREDIR = os.environ[SHAREDIR_ENVVAR] if SHAREDIR_ENVVAR in os.environ else os.path.join(os.sep, 'tmp', 'share')
+
+
+
+# Server config to execute if that requested is not available
 DEFAULTCONFIG = 'null'
+
 
 
 class ImageIndices:
