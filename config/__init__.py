@@ -1,15 +1,21 @@
 import importlib
+import importlib.util
 import ismrmrd
 import logging
 import os
+import sys
 import traceback
 from collections import namedtuple
 
 import constants
 import mrdhelper
 
-# TODO Just provide configs with the root share directory; they can choose what to do from there
-SHAREDIR = "/tmp/share"
+# Just provide configs with the root share directory; they can choose what to do from there
+# TODO Would be preferable for this to be an environment variable that is set within the server environment prior to execution
+# Since I suspect it's not possible to pass custom environment variables to a chroot environment,
+#   consider making the chroot share path the default, and other environments can override
+#SHAREDIR = os.path.join(os.sep, 'tmp', 'share')
+SHAREDIR = os.path.join('D:', os.sep, 'Scout2B1', 'share')
 
 DEFAULTCONFIG = 'null'
 
@@ -61,7 +67,8 @@ Settings = namedtuple('Settings', ['keep_acq', 'keep_image', 'keep_waveform', 'a
 # TODO Simple convenience function to give path to code / debug / share directory for any given config,
 #   creating said directory if it does not yet exist
 # Would it be necessary to use inspect module to find config name?
-
+# If so, would want an implementation that finds config name even if called from inside a subsequent function;
+#   that is, it needs to be the name of the module invoked by config.process()
 
 
 def process(connection, config, metadata):
@@ -69,20 +76,68 @@ def process(connection, config, metadata):
     # TODO Support usage where "config" is not a string, but a path to an XML file
     # This seemingly has some precedent with Gadgetron?
     # Would allow better handling of eg. scout2b1 toggling whether or not to pass images to injector
-    logging.info("Config: %s", config)
-    try:
-        module = importlib.import_module('config.' + config)
-        logging.info("Opened config %s", config)
-    except ImportError as exc:
-        if exc.__traceback__.tb_next is not None:
-            logging.error('Failure attempting to open config %s:', config)
-            logging.error(str(exc))
-            raise
-        logging.info("Unrecognised config '%s'; falling back to '%s'", config, DEFAULTCONFIG)
-        module = importlib.import_module('config.' + DEFAULTCONFIG)
+    logging.info("Config requested: %s", config)
+
+    module = None
+    logging.info('Looking for any code in shared location for dynamic loading')
+    dynamic_server_dir = os.path.join(SHAREDIR, 'code', 'python-ismrmrd-server')
+    if os.path.isdir(dynamic_server_dir):
+        logging.info('Found directory "' + dynamic_server_dir + '"')
+        dynamic_config_dir = os.path.join(dynamic_server_dir, 'config')
+        dynamic_lib_dir = os.path.join(dynamic_server_dir, 'lib')
+        if os.path.isdir(dynamic_lib_dir):
+            logging.info('Found lib directory at "' + dynamic_lib_dir + '"; adding to path')
+            sys.path.insert(0, dynamic_lib_dir)
+        else:
+            logging.info('No directory found at "' + dynamic_lib_dir + '"')
+        try:
+            if os.path.isdir(dynamic_config_dir):
+                logging.info('Found config directory at "' + dynamic_config_dir + '"')
+                dynamic_config_file = os.path.join(dynamic_config_dir, config + '.py')
+                if os.path.isfile(dynamic_config_file):
+                    logging.info('Found requested config file at "' + dynamic_config_file + '"; attempting module load')
+                    # Note that the code that follows here means that other contents of the dynamic code directory "config/"
+                    #   will _not_ be in the system path when this module is loaded;
+                    #   therefore, any such config file should not have any dependencies that are
+                    #   also stored within this location
+                    spec = importlib.util.spec_from_file_location(config, dynamic_config_file)
+                    if not spec:
+                        raise ImportError('Unable to load spec for file "' + dynamic_config_file + '"')
+                    logging.info('Spec: ' + str(spec))
+                    module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(module)
+                    # The following code adds the entire dynamic code directory "config/" into the system path
+                    #   before attempting the module load, such that everything within that directory is visible;
+                    #   however it does not provide any guarantee that the module that is loaded will in fact
+                    #   be the one that was found through a filesystem search in the preceding code
+                    # orig_sys_path = sys.path.copy()
+                    # sys.path.insert(0, dynamic_config_dir)
+                    # module = importlib.import_module(config)
+                    # sys.path = orig_sys_path
+                    logging.info('Opened config "' + config + '" from shared code location')
+                else:
+                    raise RuntimeError('No file found corresponding to requested config (expected at: "' + dynamic_config_file + '"); falling back to built-in config')
+            else:
+                raise RuntimeError('No directory found corresponding to dynamic configs (expected at: "' + dynamic_config_dir + '"); falling back to built-in config')
+        except RuntimeError as exc:
+            logging.info(str(exc))
+    else:
+        logging.info('No shared code directory found')
+    if module is None:
+        try:
+            module = importlib.import_module('config.' + config)
+            logging.info('Opened config "' + config + '" from internal code')
+        except ImportError as exc:
+            if exc.__traceback__.tb_next is not None:
+                logging.error('Failure attempting to open config %s:', config)
+                logging.error(str(exc))
+                raise
+            logging.info('Unrecognised config "%s"; falling back to "%s"', config, DEFAULTCONFIG)
+            module = importlib.import_module('config.' + DEFAULTCONFIG)
+
     settings = module.SETTINGS
     ImageIndices.mask = ImageIndices(settings.image_collect)
-    logging.debug('Settings for selected config: %s', settings)
+    logging.debug('Data stream parsing settings for selected config: %s', settings)
 
     mrdhelper.check_metadata(metadata)
 
