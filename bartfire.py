@@ -12,6 +12,9 @@ from bart import bart
 # Folder for debug output files
 debugFolder = "/tmp/share/debug"
 
+# Don't write to /tmp/share in cfl
+os.environ["TMPDIR"] = "/tmp"
+
 def process(connection, config, metadata):
     logging.info("Config: \n%s", config)
 
