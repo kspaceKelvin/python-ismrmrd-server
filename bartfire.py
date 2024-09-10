@@ -138,15 +138,9 @@ def process_raw(group, config, metadata):
     logging.info("Calling BART FFT")
     data = bart(1, 'fft -u -i 3', data)
 
-    # Re-format as [cha row col phs]
-    data = data.transpose((3, 0, 1, 2))
-
-    # Sum of squares coil combination
-    # Data will be [PE RO phs]
-    data = np.abs(data)
-    data = np.square(data)
-    data = np.sum(data, axis=0)
-    data = np.sqrt(data)
+    # RSS with BART
+    data = bart(1, 'rss 8', data)
+    data = np.atleast_3d(data.real)
 
     logging.debug("Image data is size %s" % (data.shape,))
     np.save(debugFolder + "/" + "img.npy", data)
