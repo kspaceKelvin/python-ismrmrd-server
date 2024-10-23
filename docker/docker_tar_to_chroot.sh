@@ -2,6 +2,8 @@
 # This script takes a Docker container export (.tar) creates a chroot image (.img)
 # Note that root privileges are required to mount the loopback images 
 
+set -eu
+
 # Syntax: ./docker_tar_to_chroot.sh docker-export.tar chroot.img
 
 EXPORT_FILE=${1}
@@ -40,6 +42,7 @@ tar -xf ${EXPORT_FILE} --directory=/mnt/chroot --totals
 df -h
 
 umount /mnt/chroot
+rmdir /mnt/chroot
 
 echo Finished!  Verify that no errors have occured and that available space on the 
 echo last row of the above df output is greater than 100 MB
