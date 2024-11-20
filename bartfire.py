@@ -12,6 +12,11 @@ from bart import bart
 # Folder for debug output files
 debugFolder = "/tmp/share/debug"
 
+# Don't write to /tmp/share in cfl
+os.environ["TMPDIR"] = "/tmp"
+
+use_nlinv = False
+
 def process(connection, config, metadata):
     logging.info("Config: \n%s", config)
 
@@ -45,7 +50,7 @@ def process(connection, config, metadata):
             if isinstance(item, ismrmrd.Acquisition):
                 # Accumulate all imaging readouts in a group
                 if (not item.is_flag_set(ismrmrd.ACQ_IS_NOISE_MEASUREMENT) and
-                    not item.is_flag_set(ismrmrd.ACQ_IS_PARALLEL_CALIBRATION) and
+                    (use_nlinv or not item.is_flag_set(ismrmrd.ACQ_IS_PARALLEL_CALIBRATION)) and
                     not item.is_flag_set(ismrmrd.ACQ_IS_PHASECORR_DATA)):
                     acqGroup.append(item)
 
@@ -131,19 +136,26 @@ def process_raw(group, config, metadata):
     logging.debug("Raw data is size %s" % (data.shape,))
     np.save(debugFolder + "/" + "raw.npy", data)
 
-    # Fourier Transform with BART
-    logging.info("Calling BART FFT")
-    data = bart(1, 'fft -u -i 3', data)
+    # Reconstruction with BART.
+    if use_nlinv:
+        logging.info("Calling BART NLINV")
 
-    # Re-format as [cha row col phs]
-    data = data.transpose((3, 0, 1, 2))
+        # coil compression to 8 channels
+        data = bart(1, "cc -p8", data)
 
-    # Sum of squares coil combination
-    # Data will be [PE RO phs]
-    data = np.abs(data)
-    data = np.square(data)
-    data = np.sum(data, axis=0)
-    data = np.sqrt(data)
+        # nlinv with debug level 4 and 13 gauss-newton steps.
+        data = bart(1, "nlinv -d4 -i13", data)
+
+        data = np.atleast_3d(abs(data))
+
+    else:
+        logging.info("Calling BART FFT")
+        data = bart(1, 'fft -u -i 3', data)
+
+        # RSS with BART
+        data = bart(1, 'rss 8', data)
+
+        data = np.atleast_3d(data.real)
 
     logging.debug("Image data is size %s" % (data.shape,))
     np.save(debugFolder + "/" + "img.npy", data)
