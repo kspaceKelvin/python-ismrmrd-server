@@ -5,7 +5,9 @@
 		"dockerfile": "../docker/Dockerfile",
 		"target":     "python-mrd-devcontainer",
 		"context":    "../",
-		"cacheFrom":  "docker.io/kspacekelvin/fire-python-devcon"
+		"cacheFrom":  [
+			"docker.io/kspacekelvin/fire-python-devcon",
+			"docker.io/kspacekelvin/fire-python:buildcache"]
 	},
 
 	// To enable your local GPUs in container if they are on enabled by default
