@@ -6,3 +6,4 @@
 *.tar
 *.zip
 data/
+.DS_Store

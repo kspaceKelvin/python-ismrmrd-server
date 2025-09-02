@@ -20,6 +20,20 @@
             "justMyCode": true,
         },
 
+         // Debug dicom2mrd
+        {
+            "name": "Debug dicom2mrd",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/dicom2mrd.py",
+            "args": [
+                "-o", "input_data.h5", "data",
+            ],
+            "console": "integratedTerminal",
+            "consoleTitle": "dicom2mrd",
+            "justMyCode": true,
+        },
+
         // Run client
         {
             "name": "Run client",
