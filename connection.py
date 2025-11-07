@@ -372,17 +372,17 @@ class Connection:
 
         image = ismrmrd.Image(header_bytes, attribute_bytes.split(b'\x00',1)[0].decode('utf-8'))  # Strip off null teminator
 
-        logging.info("    Image is size %d x %d x %d with %d channels of type %s", image.getHead().matrix_size[0], image.getHead().matrix_size[1], image.getHead().matrix_size[2], image.channels, ismrmrd.get_dtype_from_data_type(image.data_type))
+        logging.info("    Image is size %d x %d x %d with %d channels of type %s", image.getHead().matrix_size[0], image.getHead().matrix_size[1], image.getHead().matrix_size[2], image.channels, image.data.dtype)
         def calculate_number_of_entries(nchannels, xs, ys, zs):
             return nchannels * xs * ys * zs
 
         nentries = calculate_number_of_entries(image.channels, *image.getHead().matrix_size)
-        nbytes = nentries * ismrmrd.get_dtype_from_data_type(image.data_type).itemsize
+        nbytes = nentries * image.data.dtype.itemsize
 
         logging.debug("Reading in %d bytes of image data", nbytes)
         data_bytes = self.read(nbytes)
 
-        image.data.ravel()[:] = np.frombuffer(data_bytes, dtype=ismrmrd.get_dtype_from_data_type(image.data_type))
+        image.data.ravel()[:] = np.frombuffer(data_bytes, dtype=image.data.dtype)
 
         if self.savedata is True:
             if self.dset is None:

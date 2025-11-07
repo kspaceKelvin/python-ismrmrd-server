@@ -116,7 +116,7 @@ def process_image(imgGroup, connection, config, mrdHeader):
         os.makedirs(debugFolder)
         logging.debug("Created folder " + debugFolder + " for debug output files")
 
-    logging.debug("Processing data with %d images of type %s", len(imgGroup), ismrmrd.get_dtype_from_data_type(imgGroup[0].data_type))
+    logging.debug("Processing data with %d images of type %s", len(imgGroup), imgGroup[0].data.dtype)
 
     # Display MetaAttributes for first image
     tmpMeta = ismrmrd.Meta.deserialize(imgGroup[0].attribute_string)
