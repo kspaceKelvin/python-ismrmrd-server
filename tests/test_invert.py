@@ -1,11 +1,13 @@
 import os
 
 import numpy as np
-from helpers import MAX, mrd_data, write_example
+from helpers import MAX, mrd_data, checkers, write_example
 
 
 def test_invert(tmp_path):
-    in_file = write_example(tmp_path)
+    data = checkers(4,4,4)
+    examples = write_example(data, tmp_path)
+    in_file = examples["mrd"]
     out_file = tmp_path / "out.h5"
 
     os.environ["INFILE"] = str(in_file)

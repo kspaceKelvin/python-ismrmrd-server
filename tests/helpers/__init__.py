@@ -10,36 +10,36 @@ import dicom2mrd
 MAX = 4095  # 12-bit data
 
 
-def write_example(outdir):
+def checkers(nz, ny, nx):
+    checker_data = np.zeros((nz,ny, nx), dtype=np.uint16)
+    for z in range(nz):
+        for y in range(ny):
+            for x in range(nx):
+                if (x + y + z) % 2 == 0:
+                    checker_data[z, y, x] = MAX
+                else:
+                    checker_data[z, y, x] = 0
+    return checker_data
+
+
+def write_example(data, outdir, series_number=1):
+    """
+    Write example data files in mdr.h5 and dicom/ formats
+    :param outdir: where to save, likely `tmp_path` from pytest
+    :param series_number: dicom header information
+    :returns: dict with 'mrd' and 'dcmdir' keys
+    """
     mrd_h5 = outdir / "checker.h5"
 
-    # 1. create a 4x4x4 dicom image with siemens header (copied from pydicom.data)
     ds = pydicom.dcmread(pydicom.data.get_testdata_file("MR_small.dcm"))
 
-    # 2. make a checkerboard pattern of min / max values in the 3D image
-    checker_data = np.zeros((4, 4, 4), dtype=np.uint16)
-    min_val = 0
-    max_val = MAX
-    ds.Rows = 4
-    ds.Columns = 4
-    ds.NumberOfFrames = 4
+    #ds.PixelData = checkers(ds.NumberOfFrames,ds.Columns,ds.Rows).tobytes()
+    ds.PixelData = data.tobytes()
+    (ds.NumberOfFrames, ds.Columns, ds.Rows) = data.shape
     ds.SeriesDescription = "Test Checkerboard"
     ds.MagneticFieldStrength = 1.5
     ds.AcquisitionTime = "120000.000000"
-    ds.SeriesNumber = 1
-
-    for z in range(ds.NumberOfFrames):
-        for y in range(ds.Columns):
-            for x in range(ds.Rows):
-                if (x + y + z) % 2 == 0:
-                    checker_data[z, y, x] = max_val
-                else:
-                    checker_data[z, y, x] = min_val
-
-    # Update DICOM dataset with checkerboard data and add missing fields
-    ds.PixelData = checker_data.tobytes()
-
-    # Add missing required fields
+    ds.SeriesNumber = series_number
 
     # Create temporary DICOM folder and file
     temp_dicom_dir = outdir / "temp_dicoms"
@@ -53,7 +53,7 @@ def write_example(outdir):
     )
     dicom2mrd.main(args)
 
-    return mrd_h5
+    return {'mrd': mrd_h5, 'dcmdir': temp_dicom_dir}
 
 
 def mrd_data(filename, group="dataset"):
