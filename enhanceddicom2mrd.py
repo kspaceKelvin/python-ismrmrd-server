@@ -444,6 +444,14 @@ def main(args):
                 tmpMrdImg.slice = iSlice
                 tmpMrdImg.phase = iPhase
 
+                # Store original DICOM ImageType in metadata
+                try:
+                    itype = sliceImg.ImageType
+                    if itype:
+                        tmpMeta['ImageType'] = '\\'.join(str(x) for x in itype)
+                except:
+                    tmpMeta['ImageType'] = ''
+
                 try:
                     seq_name = sliceImg.SequenceName
                     res  = re.search(r'(?<=_v).*$',     seq_name)
@@ -461,6 +469,7 @@ def main(args):
                 except:
                     pass
 
+                tmpMeta['SeriesDescription'] = sliceImg.SeriesDescription
                 tmpMeta['SequenceDescription'] = sliceImg.SeriesDescription
 
                 tmpMrdImg.attribute_string = tmpMeta.serialize()
