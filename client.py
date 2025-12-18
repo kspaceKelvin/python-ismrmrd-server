@@ -186,6 +186,10 @@ def main(args):
         logging.info("Sending remote config file name '%s'", args.config)
         connection.send_config_file(args.config)
 
+    # Ensure ismrmrd package has a context manager
+    if not (hasattr(ismrmrd.Dataset, '__enter__') and hasattr(ismrmrd.Dataset, '__exit__')):
+        raise Exception("Current ismrmrd Python package does not support context manager as required by this code.  Please update to 1.14.1 or newer")
+
     with ismrmrd.Dataset(args.filename, args.in_group, create_if_needed=False) as dset:
         # --------------- Send MRD metadata -----------------------
         groups = dset.list()

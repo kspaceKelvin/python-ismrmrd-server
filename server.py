@@ -177,6 +177,10 @@ class Server:
 
                 if (connection.savedataFile == ""):
                     try:
+                        # Ensure ismrmrd package has a context manager
+                        if not (hasattr(ismrmrd.Dataset, '__enter__') and hasattr(ismrmrd.Dataset, '__exit__')):
+                            raise Exception("Current ismrmrd Python package does not support context manager as required by this code.  Please update to 1.14.1 or newer")
+
                         # Rename the saved file to use the protocol name
                         with ismrmrd.Dataset(connection.mrdFilePath, connection.savedataGroup, False) as dset:
                             groups = dset.list()
