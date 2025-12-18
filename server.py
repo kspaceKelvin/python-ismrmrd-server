@@ -178,18 +178,18 @@ class Server:
                 if (connection.savedataFile == ""):
                     try:
                         # Rename the saved file to use the protocol name
-                        dset = ismrmrd.Dataset(connection.mrdFilePath, connection.savedataGroup, False)
-                        groups = dset.list()
+                        with ismrmrd.Dataset(connection.mrdFilePath, connection.savedataGroup, False) as dset:
+                            groups = dset.list()
 
-                        if ('xml' in groups):
-                            xml_header = dset.read_xml_header()
-                            xml_header = xml_header.decode("utf-8")
-                            mrdHead = ismrmrd.xsd.CreateFromDocument(xml_header)
+                            if ('xml' in groups):
+                                xml_header = dset.read_xml_header()
+                                xml_header = xml_header.decode("utf-8")
+                                mrdHead = ismrmrd.xsd.CreateFromDocument(xml_header)
 
-                            if (mrdHead.measurementInformation.protocolName != ""):
-                                newFilePath = connection.mrdFilePath.replace("MRD_input_", mrdHead.measurementInformation.protocolName + "_")
-                                os.rename(connection.mrdFilePath, newFilePath)
-                                connection.mrdFilePath = newFilePath
+                        if (mrdHead.measurementInformation.protocolName != ""):
+                            newFilePath = connection.mrdFilePath.replace("MRD_input_", mrdHead.measurementInformation.protocolName + "_")
+                            os.rename(connection.mrdFilePath, newFilePath)
+                            connection.mrdFilePath = newFilePath
                     except:
                         pass
 
