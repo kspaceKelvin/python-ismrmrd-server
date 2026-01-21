@@ -67,17 +67,32 @@ def CreateMrdHeader(dset):
     encSpace.matrixSize.x                                       = dset.Columns
     encSpace.matrixSize.y                                       = dset.Rows
     encSpace.matrixSize.z                                       = 1
+
     encSpace.fieldOfView_mm                                     = ismrmrd.xsd.fieldOfViewMm()
     if dset.SOPClassUID.name == 'Enhanced MR Image Storage':
-        encSpace.fieldOfView_mm.x                               =       dset.PerFrameFunctionalGroupsSequence[0].PixelMeasuresSequence[0].PixelSpacing[0]*dset.Rows
-        encSpace.fieldOfView_mm.y                               =       dset.PerFrameFunctionalGroupsSequence[0].PixelMeasuresSequence[0].PixelSpacing[1]*dset.Columns
-        encSpace.fieldOfView_mm.z                               = float(dset.PerFrameFunctionalGroupsSequence[0].PixelMeasuresSequence[0].SliceThickness)
-    else:
-        encSpace.fieldOfView_mm.x                               =       dset.PixelSpacing[0]*dset.Rows
-        encSpace.fieldOfView_mm.y                               =       dset.PixelSpacing[1]*dset.Columns
-        encSpace.fieldOfView_mm.z                               = float(dset.SliceThickness)
-    enc.encodedSpace                                            = encSpace
-    enc.reconSpace                                              = encSpace
+        try:
+            PixelMeasuresSequence = dset.SharedFunctionalGroupsSequence[0].PixelMeasuresSequence[0]
+        except:
+            PixelMeasuresSequence = dset.PerFrameFunctionalGroupsSequence[0].PixelMeasuresSequence[0]
+
+            uSliceThickness  = set([float(s.PixelMeasuresSequence[0].SliceThickness)  for s in dset.PerFrameFunctionalGroupsSequence])
+            uPixelSpacingRow = set([float(s.PixelMeasuresSequence[0].PixelSpacing[0]) for s in dset.PerFrameFunctionalGroupsSequence])
+            uPixelSpacingCol = set([float(s.PixelMeasuresSequence[0].PixelSpacing[1]) for s in dset.PerFrameFunctionalGroupsSequence])
+
+            if (len(uSliceThickness) > 1) or (len(uPixelSpacingRow) > 1) or (len(uPixelSpacingCol) > 1):
+                print('Warning: Enhanced DICOM has frames with different PixelSpacing or SliceThickness -- only using information from first frame for MRD header')
+
+        encSpace.fieldOfView_mm.x =       PixelMeasuresSequence[0].PixelSpacing[1]*dset.Rows
+        encSpace.fieldOfView_mm.y =       PixelMeasuresSequence[0].PixelSpacing[0]*dset.Columns
+        encSpace.fieldOfView_mm.z = float(PixelMeasuresSequence[0].SliceThickness)
+    elif dset.SOPClassUID.name == 'MR Image Storage':
+        encSpace.fieldOfView_mm.x =       dset.PixelSpacing[1]*dset.Rows
+        encSpace.fieldOfView_mm.y =       dset.PixelSpacing[0]*dset.Columns
+        encSpace.fieldOfView_mm.z = float(dset.SliceThickness)
+
+    enc.encodedSpace = encSpace
+    enc.reconSpace   = encSpace
+
     enc.encodingLimits                                          = ismrmrd.xsd.encodingLimitsType()
     enc.parallelImaging                                         = ismrmrd.xsd.parallelImagingType()
 
