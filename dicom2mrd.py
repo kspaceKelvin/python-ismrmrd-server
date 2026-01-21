@@ -53,7 +53,12 @@ def CreateMrdHeader(dset):
         pass
 
     mrdHead.experimentalConditions                             = ismrmrd.xsd.experimentalConditionsType()
-    mrdHead.experimentalConditions.H1resonanceFrequency_Hz     = int(dset.MagneticFieldStrength*4258e4)
+    if hasattr(dset, 'TransmitterFrequency'):
+        mrdHead.experimentalConditions.H1resonanceFrequency_Hz = int(getattr(dset, 'TransmitterFrequency')*1e6)
+    elif hasattr(dset, 'ImagingFrequency'):
+        mrdHead.experimentalConditions.H1resonanceFrequency_Hz = int(getattr(dset, 'ImagingFrequency')*1e6)
+    else:
+        mrdHead.experimentalConditions.H1resonanceFrequency_Hz = int(getattr(dset, 'MagneticFieldStrength')*4258e4)
 
     enc = ismrmrd.xsd.encodingType()
     enc.trajectory                                              = ismrmrd.xsd.trajectoryType('cartesian')
