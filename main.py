@@ -28,6 +28,10 @@ def main(args):
     signal.signal(signal.SIGTERM, handle_signals)
     signal.signal(signal.SIGINT,  handle_signals)
 
+    # Allow ctrl+c in Windows
+    if sys.platform == 'win32':
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
+
     # Start server
     server.serve()
 
