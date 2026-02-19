@@ -117,6 +117,22 @@ class DicomImage:
         return 0
 
     @property
+    def InStackPositionNumber(self):
+        if self.is_enhanced:
+            content = self.get_group('FrameContentSequence')
+            if content and 'InStackPositionNumber' in content:
+                return int(content.InStackPositionNumber)
+        return None
+
+    @property
+    def StackID(self):
+        if self.is_enhanced:
+            content = self.get_group('FrameContentSequence')
+            if content and 'StackID' in content:
+                return str(content.StackID)
+        return None
+
+    @property
     def TriggerTime(self):
         if self.is_enhanced:
             cardiac = self.get_group('CardiacSynchronizationSequence')
@@ -191,6 +207,14 @@ class DicomImage:
 
     def to_json(self):
         return self.dset.to_json()
+
+
+def _normalize(vec):
+    vec = np.asarray(vec, dtype=float)
+    norm = np.linalg.norm(vec)
+    if norm == 0:
+        return vec
+    return vec / norm
 
 
 def CreateMrdHeader(dset):
@@ -354,14 +378,42 @@ def main(args):
             # Get images for this phase
             phase_imgs = [img for img in images if key_func(img) == key]
             
-            # Sort by SliceLocation
-            # Handle case where SliceLocation might be missing or all 0
-            locs = [img.SliceLocation for img in phase_imgs]
-            if len(set(locs)) < len(locs) and len(locs) > 1:
-                 # Duplicate locations? Fallback to InstanceNumber
-                 phase_imgs.sort(key=lambda x: x.InstanceNumber)
-            else:
-                 phase_imgs.sort(key=lambda x: x.SliceLocation)
+            # Sort slices robustly:
+            # 1) Enhanced frame stack coordinates when available
+            # 2) Geometric slice position along slice normal
+            # 3) InstanceNumber as final tie-breaker
+            def sort_key(img):
+                in_stack = img.InStackPositionNumber
+                stack_id = img.StackID or ''
+                try:
+                    slice_loc = float(img.SliceLocation)
+                except Exception:
+                    slice_loc = 0.0
+                return (
+                    0 if in_stack is not None else 1,
+                    stack_id,
+                    int(in_stack) if in_stack is not None else 0,
+                    slice_loc,
+                    int(img.InstanceNumber),
+                )
+
+            phase_imgs.sort(key=sort_key)
+
+            # Ensure slice index increases in the same physical direction as slice_dir.
+            if len(phase_imgs) > 1:
+                row_dir = _normalize(phase_imgs[0].ImageOrientationPatient[0:3])
+                col_dir = _normalize(phase_imgs[0].ImageOrientationPatient[3:6])
+                slice_dir = _normalize(np.cross(row_dir, col_dir))
+
+                for i_check in range(1, len(phase_imgs)):
+                    pos0 = np.asarray(phase_imgs[0].ImagePositionPatient, dtype=float)
+                    pos1 = np.asarray(phase_imgs[i_check].ImagePositionPatient, dtype=float)
+                    step = float(np.dot(pos1 - pos0, slice_dir))
+                    if step < 0:
+                        phase_imgs.reverse()
+                        break
+                    if step > 0:
+                        break
             
             if not phase_imgs:
                 continue
@@ -373,9 +425,9 @@ def main(args):
             
             # Create separate MRD Image for each slice
             for iSlice, sliceImg in enumerate(phase_imgs):
-                # Create MRD Image from single slice
-                # Transpose pixel_array from [rows, cols] to [cols, rows] to get [x, y]
-                tmpMrdImg = ismrmrd.Image.from_array(sliceImg.pixel_array.T, transpose=False)
+                # Create MRD Image from single slice.
+                # Keep DICOM's [rows, cols] layout to match direction vectors and spacing.
+                tmpMrdImg = ismrmrd.Image.from_array(sliceImg.pixel_array, transpose=False)
                 tmpMeta   = ismrmrd.Meta()
 
                 try:
@@ -393,22 +445,24 @@ def main(args):
                     print("Unsupported ImageType %s -- defaulting to IMTYPE_MAGNITUDE" % sliceImg.ImageType)
                     tmpMrdImg.image_type = ismrmrd.IMTYPE_MAGNITUDE
 
-                # FOV: Since we transposed pixel_array from [rows, cols] to [cols, rows]
-                # We need to swap the FOV calculations to match the transposed dimensions
-                # FOV X = PixelSpacing[0] * Rows (after transpose, this becomes X dimension)
-                # FOV Y = PixelSpacing[1] * Columns (after transpose, this becomes Y dimension)
-                # FOV Z = SliceThickness (single slice thickness, not total volume)
-                tmpMrdImg.field_of_view = (float(sliceImg.PixelSpacing[0]*sliceImg.Rows), 
-                                          float(sliceImg.PixelSpacing[1]*sliceImg.Columns), 
-                                          float(sliceImg.SliceThickness))
+                # DICOM PixelSpacing is [row_spacing, col_spacing] => [Y, X].
+                tmpMrdImg.field_of_view = (
+                    float(sliceImg.PixelSpacing[1] * sliceImg.Columns),
+                    float(sliceImg.PixelSpacing[0] * sliceImg.Rows),
+                    float(sliceImg.SliceThickness),
+                )
                 
                 # Note: matrix_size is read-only and derived from data shape (cols, rows, 1 for 2D slices)
                 # The slice index indicates position within the volume
                 
-                tmpMrdImg.position                 = tuple(np.stack(sliceImg.ImagePositionPatient))
-                tmpMrdImg.read_dir                 = tuple(np.stack(sliceImg.ImageOrientationPatient[0:3]))
-                tmpMrdImg.phase_dir                = tuple(np.stack(sliceImg.ImageOrientationPatient[3:7]))
-                tmpMrdImg.slice_dir                = tuple(np.cross(np.stack(sliceImg.ImageOrientationPatient[0:3]), np.stack(sliceImg.ImageOrientationPatient[3:7])))
+                row_dir = _normalize(sliceImg.ImageOrientationPatient[0:3])
+                col_dir = _normalize(sliceImg.ImageOrientationPatient[3:6])
+                slice_dir = _normalize(np.cross(row_dir, col_dir))
+
+                tmpMrdImg.position = tuple(np.asarray(sliceImg.ImagePositionPatient, dtype=float))
+                tmpMrdImg.read_dir = tuple(row_dir)
+                tmpMrdImg.phase_dir = tuple(col_dir)
+                tmpMrdImg.slice_dir = tuple(slice_dir)
                 
                 # AcquisitionTime HHMMSS.FFFFFF
                 acq_time = sliceImg.AcquisitionTime
@@ -426,7 +480,7 @@ def main(args):
                     tmpMrdImg.acquisition_time_stamp = 0
 
                 try:
-                    tmpMrdImg.physiology_time_stamp[0] = round(int(sliceImg.TriggerTime/2.5))
+                    tmpMrdImg.physiology_time_stamp[0] = int(round(sliceImg.TriggerTime / 2.5))
                 except:
                     pass
 
@@ -471,6 +525,7 @@ def main(args):
 
                 tmpMeta['SeriesDescription'] = sliceImg.SeriesDescription
                 tmpMeta['SequenceDescription'] = sliceImg.SeriesDescription
+                tmpMeta['Keep_image_geometry'] = 1
 
                 tmpMrdImg.attribute_string = tmpMeta.serialize()
                 
