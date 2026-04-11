@@ -70,6 +70,30 @@ def connection_receive_loop(sock, outfile, outgroup, verbose, logfile, recvAcqs,
     recvWaveforms.value = incoming_connection.recvWaveforms
 
 def main(args):
+    # ----- Set up logging ---------------------------------------------
+    if args.logfile:
+        print("Logging to file: ", args.logfile)
+        logging.basicConfig(filename=args.logfile, format='%(asctime)s - %(message)s', level=logging.WARNING)
+        logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
+    else:
+        print("No logfile provided")
+        logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.WARNING)
+
+    if args.verbose:
+        logging.root.setLevel(logging.DEBUG)
+    else:
+        logging.root.setLevel(logging.INFO)
+
+    # Use an output filename based on the input file if not provided
+    if args.outfile is None:
+        base, ext = os.path.splitext(args.filename)
+        args.outfile = base + '_results' + ext
+        logging.info("Output file not specified -- writing results to %s", args.outfile)
+
+    # If a config is specified via the command line arguments, then set ignore_json_config to True
+    if ('-c' in sys.argv) or ('--config' in sys.argv):
+        args.ignore_json_config = True
+
     # ----- Load and validate file ---------------------------------------------
     if (args.config_local):
         if not os.path.exists(args.config_local):
@@ -362,27 +386,5 @@ if __name__ == '__main__':
     parser.set_defaults(**defaults)
 
     args = parser.parse_args()
-
-    if args.logfile:
-        print("Logging to file: ", args.logfile)
-        logging.basicConfig(filename=args.logfile, format='%(asctime)s - %(message)s', level=logging.WARNING)
-        logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
-    else:
-        print("No logfile provided")
-        logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.WARNING)
-
-    if args.verbose:
-        logging.root.setLevel(logging.DEBUG)
-    else:
-        logging.root.setLevel(logging.INFO)
-
-    if args.outfile is None:
-        base, ext = os.path.splitext(args.filename)
-        args.outfile = base + '_results' + ext
-        logging.info("Output file not specified -- writing results to %s", args.outfile)
-
-    # If a config is specified via the command line arguments, then set ignore_json_config to True
-    if ('-c' in sys.argv) or ('--config' in sys.argv):
-        args.ignore_json_config = True
 
     main(args)
