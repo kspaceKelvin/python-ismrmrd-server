@@ -28,10 +28,11 @@ defaults = {
     'send_waveforms':     False,
     'verbose':            False,
     'logfile':            '',
+    'quiet':              False,
     'mrd2gif':            False
 }
 
-def connection_receive_loop(sock, outfile, outgroup, verbose, logfile, recvAcqs, recvImages, recvWaveforms):
+def connection_receive_loop(sock, outfile, outgroup, verbose, logfile, quiet, recvAcqs, recvImages, recvWaveforms):
     """Start a Connection instance to receive data, generally run in a separate thread"""
 
     if verbose:
@@ -41,7 +42,8 @@ def connection_receive_loop(sock, outfile, outgroup, verbose, logfile, recvAcqs,
 
     if logfile:
         logging.basicConfig(filename=logfile, format='%(asctime)s - %(message)s', level=verbosity)
-        logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
+        if not quiet:
+            logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
     else:
         logging.basicConfig(format='%(asctime)s - %(message)s', level=verbosity)
 
@@ -74,7 +76,8 @@ def main(args):
     if args.logfile:
         print("Logging to file: ", args.logfile)
         logging.basicConfig(filename=args.logfile, format='%(asctime)s - %(message)s', level=logging.WARNING)
-        logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
+        if not args.quiet:
+            logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
     else:
         print("No logfile provided")
         logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.WARNING)
@@ -116,7 +119,7 @@ def main(args):
             return
         dsetNames = dset.keys()
         logging.info("File %s contains %d groups:", args.filename, len(dset.keys()))
-        print(" ", "\n  ".join(dsetNames))
+        logging.info("\n  ".join(dsetNames))
 
         if not args.in_group:
             if len(dset.keys()) == 1:
@@ -191,7 +194,7 @@ def main(args):
     recvAcqs      = multiprocessing.Value('i', 0)
     recvImages    = multiprocessing.Value('i', 0)
     recvWaveforms = multiprocessing.Value('i', 0)
-    process = multiprocessing.Process(target=connection_receive_loop, args=(sock, args.outfile, args.out_group, args.verbose, args.logfile, recvAcqs, recvImages, recvWaveforms))
+    process = multiprocessing.Process(target=connection_receive_loop, args=(sock, args.outfile, args.out_group, args.verbose, args.logfile, args.quiet, recvAcqs, recvImages, recvWaveforms))
     process.daemon = True
     process.start()
 
@@ -380,6 +383,7 @@ if __name__ == '__main__':
     parser.add_argument('-w', '--send-waveforms',     action='store_true', help='Send waveform (physio) data')
     parser.add_argument('-v', '--verbose',            action='store_true', help='Verbose mode')
     parser.add_argument('-l', '--logfile',            type=str,            help='Path to log file')
+    parser.add_argument('-q', '--quiet',              action='store_true', help='Suppress stdout logging')
     parser.add_argument(      '--ignore-json-config', action='store_true', help='Ignore config specified in JSON')
     parser.add_argument(      '--mrd2gif',            action='store_true', help='Run mrd2gif on output file')
 
