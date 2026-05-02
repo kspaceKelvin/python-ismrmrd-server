@@ -20,6 +20,9 @@ defaults = {
     'no_mosaic_slices': False,
     'mosaic_less_than': 6,
     'filetype':         'gif',
+    'ref_filename':     '',
+    'ref_in_group':     '',
+    'ref_diff_scale':   1.0,
     'series':           '',
     'quiet':            False
 }
@@ -477,8 +480,7 @@ def _main_inner(args: argparse.Namespace) -> None:
         print(" ", "\n  ".join(dsetNames))
 
         if not args.in_group:
-            if len(dset.keys()) > 1:
-                print("Input group not specified -- selecting most recent")
+            print("Input group not specified -- selecting most recent: %s" % list(dset.keys())[-1])
             args.in_group = list(dset.keys())[-1]
 
         if args.in_group not in dset:
@@ -510,6 +512,22 @@ def _main_inner(args: argparse.Namespace) -> None:
         print("File does not contain properly formatted MRD image data")
         return
 
+    # Determine the most appropriate dataset (group) in the reference file
+    refInGroup = args.ref_in_group
+    if args.ref_filename:
+        try:
+            with h5py.File(args.ref_filename, 'r') as dsetRefMeta:
+                refGroups = list(dsetRefMeta.keys())
+
+            print("Reference file %s contains %d groups:" % (args.ref_filename, len(refGroups)))
+            print(" ", "\n  ".join(refGroups))
+
+            if not refInGroup:
+                print("Reference group not specified -- selecting most recent: %s" % refGroups[-1])
+                refInGroup = refGroups[-1]
+        except Exception as ex:
+            print("Could not inspect reference file groups: %s" % ex)
+
     if 'mode' in inspect.signature(ismrmrd.Dataset).parameters:
         modeargs = {'mode': 'r'}
     else:
@@ -530,11 +548,75 @@ def _main_inner(args: argparse.Namespace) -> None:
             (images, rois, heads, metas) = ReadMrdImageSeries(dset, group)
             print("  Read in %s images of shape %s" % (len(images), images[0].size[::-1]))
 
+            # Keep original image data for diff
+            imagesRaw = [np.array(img).astype(np.float32) for img in images]
+
             # Compute window/level using MetaAttributes if present, otherwise 5/95th percentile of pixel values
             minVals, maxVals = ComputeWindowRanges(images, metas)
             images = ApplyWindowLevel(images, minVals, maxVals)
 
             images = ApplyColormapROI(images, rois, heads, metas, args.rescale)
+
+            is_diff = False
+            # If applicable, load in a reference dataset for comparison/diff
+            try:
+                with ismrmrd.Dataset(args.ref_filename, refInGroup, create_if_needed=False, **modeargs) as dsetRef:
+                    (imagesRef, roisRef, headsRef, metasRef) = ReadMrdImageSeries(dsetRef, group)
+                print("  Read in %s reference images of shape %s" % (len(imagesRef), imagesRef[0].size[::-1]))
+                
+                if len(imagesRef) != len(images):
+                    print("  Warning: Number of reference images (%d) does not match number of source images (%d)" % (len(imagesRef), len(images)))
+                    continue
+
+                imagesRefRaw = [np.array(img).astype(np.float32) for img in imagesRef]
+
+                # Apply the same source-derived window/level to the reference images
+                # so displayed source/reference images are directly comparable.
+                imagesRef = ApplyWindowLevel(imagesRef, minVals, maxVals)
+                imagesRef = ApplyColormapROI(imagesRef, roisRef, headsRef, metasRef, args.rescale)
+
+                # Create a vertically stacked combination of (image, reference image, difference)
+                imagesCombined = []
+                for img, imgRef, imgRaw, imgRefRaw, imgMinVal, imgMaxVal in zip(images, imagesRef, imagesRaw, imagesRefRaw, minVals, maxVals):
+                    imgMode = img.mode
+
+                    if len(imgRaw.shape) <= 2 or len(imgRefRaw.shape) <= 2:
+                        # Calculate diff first in raw space for non-RGB images, then apply the same
+                        # windowing used for display so grayscale diff intensity is consistent.
+                        rawDiff = np.abs(imgRaw - imgRefRaw)
+                        rawDiff = np.array(ApplyWindowLevel([Image.fromarray(rawDiff.astype(np.float32))], [imgMinVal], [imgMaxVal])[0], dtype=np.float32)
+                        diffImg = rawDiff
+                    else:
+                        diffImg = np.zeros_like(imgRaw)
+
+                    if imgMode == 'RGB':
+                        # For images with ROIs, the ROI is burned into the image and converted to RGB.
+                        # Calculate the diff in display space so that the diff can capture differences
+                        # in both the underlying image and the ROI overlay.  For native RGB images,
+                        # this should be identical to the raw diff
+                        displayDiff = np.abs(np.array(img).astype(np.float32) - np.array(imgRef).astype(np.float32))
+
+                        # Keep the strongest response from either the display-space
+                        # diff or the windowed raw diff at each pixel.
+                        diffImg = np.maximum(displayDiff.astype(np.float32), diffImg.astype(np.float32))
+                    else:
+                        # Apply optional scaling to improve visibility of scalar images
+                        diffImg = diffImg*args.ref_diff_scale
+
+                    # Clip diff images to 0-255, which has been set previously by ApplyWindowColormapROI for other images
+                    diffImg = np.clip(diffImg, 0, 255).astype(np.array(img).dtype)
+
+                    tmpImg = Image.fromarray(np.vstack([img, imgRef, diffImg]), mode=imgMode)
+                    if imgMode == 'P':
+                        palette = img.getpalette()
+                        tmpImg.putpalette(palette)
+
+                    imagesCombined.append(tmpImg)
+
+                images = imagesCombined
+                is_diff = True
+            except:
+                pass
 
             if not args.no_mosaic_slices:
                 images = MosaicImages(images, heads, args.mosaic_less_than)
@@ -571,8 +653,9 @@ def _main_inner(args: argparse.Namespace) -> None:
                     saveargs = {'comment': metas[0].serialize().encode('utf-8')}
 
             # Make valid file name
-            outFileName = os.path.splitext(os.path.basename(args.filename))[0] + '_' + args.in_group + '_' + group + seqDescription + '.' + fileType
-            outFileName = "".join(c for c in outFileName if c.isalnum() or c in (' ','.','_')).rstrip()
+            diffSuffix = '_diff' if is_diff else ''
+            outFileName = os.path.splitext(os.path.basename(args.filename))[0] + '_' + args.in_group + '_' + group + seqDescription + diffSuffix + '.' + fileType
+            outFileName = "".join(c for c in outFileName if c.isalnum() or c in (' ','.','-','_')).rstrip()
             outFileName = outFileName.replace(" ", "_")
             outFilePath = os.path.join(os.path.dirname(args.filename), outFileName)
 
@@ -594,6 +677,9 @@ if __name__ == '__main__':
     parser.add_argument(      '--no-mosaic-slices', action='store_true', help='Do not mosaic images along slice dimension')
     parser.add_argument(      '--mosaic-less-than', type=int,            help='Mosaic images with less than this number of images in series')
     parser.add_argument(      '--filetype',         type=str,            help='File type for output images (gif or png)')
+    parser.add_argument(      '--ref-filename',     type=str,            help='Reference file to compare against')
+    parser.add_argument(      '--ref-in-group',     type=str,            help='Data group in reference file')
+    parser.add_argument(      '--ref-diff-scale',   type=float,          help='Scaling factor for difference image')
     parser.add_argument('-s', '--series',           type=str,            help='Process only this single series (e.g. image_0)')
     parser.add_argument('-q', '--quiet',            action='store_true', help='Suppress all stdout output')
 
