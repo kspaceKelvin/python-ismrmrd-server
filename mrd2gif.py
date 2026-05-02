@@ -14,6 +14,7 @@ from PIL import Image, ImageDraw, PngImagePlugin
 defaults = {
     'in_group':         '',
     'rescale':          1,
+    'fps':              25,
     'no_mosaic_slices': False,
     'mosaic_less_than': 6,
     'filetype':         'gif'
@@ -482,7 +483,7 @@ def main(args: argparse.Namespace) -> None:
 
             print("  Writing image: %s " % (outFilePath))
             if len(images) > 1:
-                images[0].save(outFilePath, save_all=True, append_images=images[1:], loop=0, duration=40, **saveargs)
+                images[0].save(outFilePath, save_all=True, append_images=images[1:], loop=0, duration=1000/args.fps, **saveargs)
             else:
                 images[0].save(outFilePath, save_all=True, append_images=images[1:], **saveargs)
 
@@ -494,6 +495,7 @@ if __name__ == '__main__':
     parser.add_argument('filename',                                      help='Input file')
     parser.add_argument('-g', '--in-group',                              help='Input data group')
     parser.add_argument('-r', '--rescale',          type=int,            help='Rescale factor (integer) for output images')
+    parser.add_argument(      '--fps',              type=int,            help='Frame rate for animated images')
     parser.add_argument(      '--no-mosaic-slices', action='store_true', help='Do not mosaic images along slice dimension')
     parser.add_argument(      '--mosaic-less-than', type=int,            help='Mosaic images with less than this number of images in series')
     parser.add_argument(      '--filetype',         type=str,            help='File type for output images (gif or png)')
