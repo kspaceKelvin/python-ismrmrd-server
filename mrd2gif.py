@@ -108,14 +108,116 @@ def ReadMrdImageSeries(dset: ismrmrd.Dataset, group: str) -> Tuple[List[Image.Im
 
     return (images, rois, heads, metas)
 
-def ApplyWindowColormapROI(images, rois, heads, metas, rescale):
+def GetMetaValueFromCandidates(meta: Dict[str, Any], *keys: str) -> Optional[Any]:
     """
-    Apply window/level, colormaps, and ROIs to images if applicable.
+    Return the first metadata value found for a list of candidate keys.
 
-    Window/level from MetaAttributes are used when available, otherwise
-    percentile scaling is used.  Colormaps are loaded from correspondingly
-    named .npy files and applied as a palette.  ROIs are drawn into the
-    image pixel data.
+    Args:
+        meta: MetaAttributes dictionary-like object.
+        *keys: Ordered candidate keys to query.
+
+    Returns:
+        First non-None value, or None if no keys are present.
+    """
+
+    for key in keys:
+        value = meta.get(key)
+        if value is not None:
+            return value
+
+    return None
+
+def ComputeWindowRanges(images: List[Any], metas: List[Dict[str, Any]]) -> Tuple[List[float], List[float]]:
+    """
+    Compute series-wide window/level range for an image series.
+
+    Args:
+        images: Images in PIL.Image format or numpy arrays.
+        metas: MetaAttributes for each image.
+
+    Returns:
+        Tuple of (minVals, maxVals), each a per-image list.
+        If all images have explicit metadata window/level values, use those per
+        image values.  Otherwise, fall back to one series-wide range for all images.
+    """
+
+    if len(images) == 0:
+        return ([], [])
+
+    # Window/level defaults for all images in series
+    seriesMaxVal = np.median([np.percentile(np.array(img), 95) for img in images])
+    seriesMinVal = np.median([np.percentile(np.array(img),  5) for img in images])
+
+    # Special case for "sparse" images, usually just text
+    if seriesMaxVal == seriesMinVal:
+        seriesMaxVal = np.median([np.max(np.array(img)) for img in images])
+        seriesMinVal = np.median([np.min(np.array(img)) for img in images])
+
+    # Extract window/level from each image's metadata
+    metaRanges = []
+    for meta in metas:
+        windowCenter = GetMetaValueFromCandidates(meta, 'WindowCenter', 'GADGETRON_WindowCenter')
+        windowWidth  = GetMetaValueFromCandidates(meta, 'WindowWidth',  'GADGETRON_WindowWidth')
+
+        if (windowCenter is None) or (windowWidth is None):
+            metaRanges.append(None)
+        else:
+            metaRanges.append((
+                float(windowCenter) - float(windowWidth)/2,
+                float(windowCenter) + float(windowWidth)/2,
+            ))
+
+    nonNoneRanges = [r for r in metaRanges if r is not None]
+
+    # Case 1: No metadata ranges -> use series-wide range for all images.
+    if len(nonNoneRanges) == 0:
+        return ([seriesMinVal] * len(images), [seriesMaxVal] * len(images))
+
+    # Case 2: Metadata ranges for all images -> use per-image metadata ranges.
+    if len(metaRanges) == len(images) and all(r is not None for r in metaRanges):
+        perImageRanges = [r for r in metaRanges if r is not None]
+        if len(set(perImageRanges)) > 1:
+            print('  Using per-image MetaAttribute window/level values')
+        minVals, maxVals = zip(*perImageRanges)
+        return (list(minVals), list(maxVals))
+
+    # Case 3: Metadata ranges for only some images -> warn and fill missing
+    # with the first metadata range.
+    firstMetaRange = nonNoneRanges[0]
+    print('  Warning: MetaAttribute window/level is present for only some images; using first MetaAttribute window/level for images without MetaAttribute window/level')
+    filledRanges = [r if r is not None else firstMetaRange for r in metaRanges]
+    minVals, maxVals = zip(*filledRanges)
+    return (list(minVals), list(maxVals))
+
+def ApplyWindowLevel(images: List[Image.Image], minVals: List[float], maxVals: List[float]) -> List[Image.Image]:
+    """
+    Apply window/level scaling and clip to display range.
+
+    Args:
+        images: Input images in PIL.Image format.
+        minVals: Per-image lower window bounds.
+        maxVals: Per-image upper window bounds.
+
+    Returns:
+        Window-leveled images in PIL.Image format with values in [0, 255].
+    """
+
+    imagesWL = []
+    for img, minVal, maxVal in zip(images, minVals, maxVals):
+        dataWL = np.array(img).astype(float) - minVal
+        if maxVal != minVal:
+            dataWL *= 255/(maxVal - minVal)
+        dataWL = np.clip(dataWL, 0, 255).astype(np.uint8)
+        imagesWL.append(Image.fromarray(dataWL))
+
+    return imagesWL
+
+def ApplyColormapROI(images: List[Image.Image], rois: List[List[Tuple]], heads: List[Any], metas: List[Dict[str, Any]], rescale: float) -> List[Image.Image]:
+    """
+    Apply colormaps and ROIs to images if applicable.
+
+    Colormaps are loaded from correspondingly named .npy files and applied as
+    a palette. ROIs are drawn into the image pixel data.
     
     Args:
         images: Images in PIL.Image format.
@@ -125,33 +227,13 @@ def ApplyWindowColormapROI(images, rois, heads, metas, rescale):
         rescale: Rescale image dimensions by this factor.
 
     Returns:
-        Images after windowing, colormap, and ROI processing.
+        Images after colormap and ROI processing.
     """
 
     hasRois = any([len(x) > 0 for x in rois])
 
-    # Window/level for all images in series
-    seriesMaxVal = np.median([np.percentile(np.array(img), 95) for img in images])
-    seriesMinVal = np.median([np.percentile(np.array(img),  5) for img in images])
-
-    # Special case for "sparse" images, usually just text
-    if seriesMaxVal == seriesMinVal:
-        seriesMaxVal = np.median([np.max(np.array(img)) for img in images])
-        seriesMinVal = np.median([np.min(np.array(img)) for img in images])
-
     imagesWL = []
     for img, roi, meta in zip(images, rois, metas):
-        # Use window/level from MetaAttributes if available
-        minVal = seriesMinVal
-        maxVal = seriesMaxVal
-
-        if (('WindowCenter' in meta) and ('WindowWidth' in meta)):
-            minVal = float(meta['WindowCenter']) - float(meta['WindowWidth'])/2
-            maxVal = float(meta['WindowCenter']) + float(meta['WindowWidth'])/2
-        elif (('GADGETRON_WindowCenter' in meta) and ('GADGETRON_WindowWidth' in meta)):
-            minVal = float(meta['GADGETRON_WindowCenter']) - float(meta['GADGETRON_WindowWidth'])/2
-            maxVal = float(meta['GADGETRON_WindowCenter']) + float(meta['GADGETRON_WindowWidth'])/2
-
         if ('LUTFileName' in meta) or ('GADGETRON_ColorMap' in meta):
             LUTFileName = meta['LUTFileName'] if 'LUTFileName' in meta else meta['GADGETRON_ColorMap']
 
@@ -189,11 +271,7 @@ def ApplyWindowColormapROI(images, rois, heads, metas, rescale):
         if img.mode != 'RGB':
             if hasRois:
                 # Convert to RGB mode to allow colored ROI overlays
-                data = np.array(img).astype(float)
-                data -= minVal
-                if maxVal != minVal:
-                    data *= 255/(maxVal - minVal)
-                data = np.clip(data, 0, 255)
+                data = np.array(img)
                 if palette is not None:
                     tmpImg = Image.fromarray(data.astype(np.uint8), mode='P')
                     tmpImg.putpalette(palette)
@@ -217,10 +295,7 @@ def ApplyWindowColormapROI(images, rois, heads, metas, rescale):
                     draw.line(list(zip(x, y)), fill=(int(rgb[0]*255), int(rgb[1]*255), int(rgb[2]*255), 255), width=int(thickness))
                 imagesWL.append(tmpImg)
             else:
-                data = np.array(img).astype(float)
-                data -= minVal
-                data *= 255/(maxVal - minVal)
-                data = np.clip(data, 0, 255).astype(np.uint8)
+                data = np.array(img, dtype=np.uint8)
 
                 if palette is not None:
                     tmpImg = Image.fromarray(data, mode='P')
@@ -455,7 +530,11 @@ def _main_inner(args: argparse.Namespace) -> None:
             (images, rois, heads, metas) = ReadMrdImageSeries(dset, group)
             print("  Read in %s images of shape %s" % (len(images), images[0].size[::-1]))
 
-            images = ApplyWindowColormapROI(images, rois, heads, metas, args.rescale)
+            # Compute window/level using MetaAttributes if present, otherwise 5/95th percentile of pixel values
+            minVals, maxVals = ComputeWindowRanges(images, metas)
+            images = ApplyWindowLevel(images, minVals, maxVals)
+
+            images = ApplyColormapROI(images, rois, heads, metas, args.rescale)
 
             if not args.no_mosaic_slices:
                 images = MosaicImages(images, heads, args.mosaic_less_than)
