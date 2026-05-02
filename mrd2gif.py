@@ -15,7 +15,8 @@ defaults = {
     'in_group':         '',
     'rescale':          1,
     'no_mosaic_slices': False,
-    'mosaic_less_than': 6
+    'mosaic_less_than': 6,
+    'filetype':         'gif'
 }
 
 def ReadMrdImageSeries(dset: ismrmrd.Dataset, group: str) -> Tuple[List[Image.Image], List[List[Tuple]], List[Any], List[Any]]:
@@ -214,10 +215,10 @@ def ApplyWindowColormapROI(images, rois, heads, metas, rescale):
                 data = np.array(img).astype(float)
                 data -= minVal
                 data *= 255/(maxVal - minVal)
-                data = np.clip(data, 0, 255)
+                data = np.clip(data, 0, 255).astype(np.uint8)
 
                 if palette is not None:
-                    tmpImg = Image.fromarray(data.astype(np.uint8), mode='P')
+                    tmpImg = Image.fromarray(data, mode='P')
                     tmpImg.putpalette(palette)
                     imagesWL.append(tmpImg)
                 else:
@@ -453,17 +454,27 @@ def main(args: argparse.Namespace) -> None:
                     else:
                         seqDescription = '_' + '_'.join([s.lstrip('_') for s in metas[0]['GADGETRON_SeqDescription']])
 
-            # Make valid file name 
-            gifFileName = os.path.splitext(os.path.basename(args.filename))[0] + '_' + args.in_group + '_' + group + seqDescription + '.gif'
-            gifFileName = "".join(c for c in gifFileName if c.isalnum() or c in (' ','.','_')).rstrip()
-            gifFileName = gifFileName.replace(" ", "_")
-            gifFilePath = os.path.join(os.path.dirname(args.filename), gifFileName)
+            fileType = args.filetype.lstrip('.').lower()
 
-            print("  Writing image: %s " % (gifFilePath))
+            # GIF only supports 256 colors; switch to PNG if any RGB image exceeds that
+            if fileType == 'gif' and any(img.mode == 'RGB' for img in images):
+                for img in images:
+                    if img.mode == 'RGB' and img.getcolors(maxcolors=256) is None:
+                        print("  RGB image has >256 colors -- switching to .png to avoid dithering")
+                        fileType = 'png'
+                        break
+
+            # Make valid file name
+            outFileName = os.path.splitext(os.path.basename(args.filename))[0] + '_' + args.in_group + '_' + group + seqDescription + '.' + fileType
+            outFileName = "".join(c for c in outFileName if c.isalnum() or c in (' ','.','_')).rstrip()
+            outFileName = outFileName.replace(" ", "_")
+            outFilePath = os.path.join(os.path.dirname(args.filename), outFileName)
+
+            print("  Writing image: %s " % (outFilePath))
             if len(images) > 1:
-                images[0].save(gifFilePath, save_all=True, append_images=images[1:], loop=0, duration=40)
+                images[0].save(outFilePath, save_all=True, append_images=images[1:], loop=0, duration=40)
             else:
-                images[0].save(gifFilePath, save_all=True, append_images=images[1:])
+                images[0].save(outFilePath, save_all=True, append_images=images[1:])
 
     return
 
@@ -475,6 +486,7 @@ if __name__ == '__main__':
     parser.add_argument('-r', '--rescale',          type=int,            help='Rescale factor (integer) for output images')
     parser.add_argument(      '--no-mosaic-slices', action='store_true', help='Do not mosaic images along slice dimension')
     parser.add_argument(      '--mosaic-less-than', type=int,            help='Mosaic images with less than this number of images in series')
+    parser.add_argument(      '--filetype',         type=str,            help='File type for output images (gif or png)')
 
     parser.set_defaults(**defaults)
 
