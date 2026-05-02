@@ -17,7 +17,8 @@ defaults = {
     'fps':              25,
     'no_mosaic_slices': False,
     'mosaic_less_than': 6,
-    'filetype':         'gif'
+    'filetype':         'gif',
+    'series':           ''
 }
 
 def ReadMrdImageSeries(dset: ismrmrd.Dataset, group: str) -> Tuple[List[Image.Image], List[List[Tuple]], List[Any], List[Any]]:
@@ -434,6 +435,10 @@ def main(args: argparse.Namespace) -> None:
             if ( (group == 'config') or (group == 'config_file') or (group == 'xml') ):
                 continue
 
+            # Skip processing of all series other the one defined
+            if args.series and group != args.series:
+                continue
+
             print("Reading images from '/" + args.in_group + "/" + group + "'")
 
             (images, rois, heads, metas) = ReadMrdImageSeries(dset, group)
@@ -499,6 +504,7 @@ if __name__ == '__main__':
     parser.add_argument(      '--no-mosaic-slices', action='store_true', help='Do not mosaic images along slice dimension')
     parser.add_argument(      '--mosaic-less-than', type=int,            help='Mosaic images with less than this number of images in series')
     parser.add_argument(      '--filetype',         type=str,            help='File type for output images (gif or png)')
+    parser.add_argument('-s', '--series',           type=str,            help='Process only this single series (e.g. image_0)')
 
     parser.set_defaults(**defaults)
 
