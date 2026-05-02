@@ -191,6 +191,12 @@ def main(args):
                         else:
                             tmpImg = Image.fromarray(np.repeat(data[:,:,np.newaxis],3,axis=2).astype(np.uint8), mode='RGB')
 
+                        # Gadgetron compatibility: x/y are swapped in ROIs if Correct_image_orientation is true
+                        if ('Correct_image_orientation' in meta) and (meta['Correct_image_orientation'] != 0):
+                            print('  Swapping x/y dimension of ROIs due to Correct_image_orientation...')
+                            for i in range(len(roi)):
+                                roi[i] = tuple((roi[i][1], roi[i][0], roi[i][2], roi[i][3]))
+
                         if args.rescale != 1:
                             tmpImg = tmpImg.resize(tuple(args.rescale*x for x in tmpImg.size))
                             for i in range(len(roi)):
@@ -300,7 +306,10 @@ def main(args):
             if 'SequenceDescriptionAdditional' in meta.keys():
                 seqDescription = '_' + meta['SequenceDescriptionAdditional']
             elif 'GADGETRON_SeqDescription' in meta.keys():
-                seqDescription = '_'.join(meta['GADGETRON_SeqDescription'])
+                if isinstance(meta['GADGETRON_SeqDescription'], str):
+                    seqDescription = '_' + meta['GADGETRON_SeqDescription'].lstrip('_')
+                else:
+                    seqDescription = '_' + '_'.join([s.lstrip('_') for s in meta['GADGETRON_SeqDescription']])
             else:
                 seqDescription = ''
 
