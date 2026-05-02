@@ -6,6 +6,7 @@ import h5py
 import ismrmrd
 import numpy as np
 import mrdhelper
+import matplotlib.pyplot as plt
 import inspect
 from typing import List, Tuple, Dict, Optional, Any
 from PIL import Image, ImageDraw
@@ -149,16 +150,30 @@ def ApplyWindowColormapROI(images, rois, heads, metas, rescale):
             LUTFileName = meta['LUTFileName'] if 'LUTFileName' in meta else meta['GADGETRON_ColorMap']
 
             # Replace extension with '.npy'
+            # LUT file is a (256,3) numpy array of RGB values between 0 and 255
             LUTFileName = os.path.splitext(LUTFileName)[0] + '.npy'
 
-            # LUT file is a (256,3) numpy array of RGB values between 0 and 255
-            if os.path.exists(LUTFileName):
-                palette = np.load(LUTFileName)
+            LUTPath = None
+            dirs = ['',
+                    'colormaps',
+                    os.path.dirname(os.path.abspath(__file__)), 
+                    os.path.join(os.path.dirname(os.path.abspath(__file__)), 'colormaps')]
+
+            for dir in dirs:
+                testPath = os.path.join(dir, LUTFileName)
+                if os.path.exists(testPath):
+                    LUTPath = testPath
+                    break
+
+            if LUTPath:
+                palette = np.load(LUTPath)
                 palette = palette.flatten().tolist()  # As required by PIL
-            # Look in subdirectory 'colormaps' if not found in current directory
-            elif os.path.exists(os.path.join('colormaps', LUTFileName)):
-                palette = np.load(os.path.join('colormaps', LUTFileName))
-                palette = palette.flatten().tolist()  # As required by PIL
+                print("  Applying LUT file %s" % (LUTPath))
+            elif os.path.splitext(LUTFileName)[0] in plt.colormaps():
+                cmap = plt.get_cmap(os.path.splitext(LUTFileName)[0])
+                palette = cmap(np.linspace(0, 1, 256))[:,:3] * 255
+                palette = palette.astype(int).flatten().tolist()
+                print("  Applying LUT %s from matplotlib colormap library" % (os.path.splitext(LUTFileName)[0]))
             else:
                 print("LUT file %s specified by MetaAttributes, but not found" % (LUTFileName))
                 palette = None
@@ -428,17 +443,15 @@ def main(args: argparse.Namespace) -> None:
                 images = MosaicImages(images, heads, args.mosaic_less_than)
 
             # Add SequenceDescriptionAdditional to filename, if present
-            image = dset.read_image(group, 0)
-            meta = ismrmrd.Meta.deserialize(image.attribute_string)
-            if 'SequenceDescriptionAdditional' in meta.keys():
-                seqDescription = '_' + meta['SequenceDescriptionAdditional']
-            elif 'GADGETRON_SeqDescription' in meta.keys():
-                if isinstance(meta['GADGETRON_SeqDescription'], str):
-                    seqDescription = '_' + meta['GADGETRON_SeqDescription'].lstrip('_')
-                else:
-                    seqDescription = '_' + '_'.join([s.lstrip('_') for s in meta['GADGETRON_SeqDescription']])
-            else:
-                seqDescription = ''
+            seqDescription = ''
+            if metas:
+                if 'SequenceDescriptionAdditional' in metas[0].keys():
+                    seqDescription = '_' + metas[0]['SequenceDescriptionAdditional']
+                elif 'GADGETRON_SeqDescription' in metas[0].keys():
+                    if isinstance(metas[0]['GADGETRON_SeqDescription'], str):
+                        seqDescription = '_' + metas[0]['GADGETRON_SeqDescription'].lstrip('_')
+                    else:
+                        seqDescription = '_' + '_'.join([s.lstrip('_') for s in metas[0]['GADGETRON_SeqDescription']])
 
             # Make valid file name 
             gifFileName = os.path.splitext(os.path.basename(args.filename))[0] + '_' + args.in_group + '_' + group + seqDescription + '.gif'
