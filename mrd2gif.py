@@ -9,7 +9,7 @@ import mrdhelper
 import matplotlib.pyplot as plt
 import inspect
 from typing import List, Tuple, Dict, Optional, Any
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, PngImagePlugin
 
 defaults = {
     'in_group':         '',
@@ -464,6 +464,16 @@ def main(args: argparse.Namespace) -> None:
                         fileType = 'png'
                         break
 
+            # Add MetaAttributes to GIF/PNG image (first MRD image only)
+            saveargs = {}
+            if metas:
+                if fileType == 'png':
+                    metadata = PngImagePlugin.PngInfo()
+                    metadata.add_text("MetaAttributes", metas[0].serialize())
+                    saveargs = {'pnginfo': metadata}
+                elif fileType == 'gif':
+                    saveargs = {'comment': metas[0].serialize().encode('utf-8')}
+
             # Make valid file name
             outFileName = os.path.splitext(os.path.basename(args.filename))[0] + '_' + args.in_group + '_' + group + seqDescription + '.' + fileType
             outFileName = "".join(c for c in outFileName if c.isalnum() or c in (' ','.','_')).rstrip()
@@ -472,9 +482,9 @@ def main(args: argparse.Namespace) -> None:
 
             print("  Writing image: %s " % (outFilePath))
             if len(images) > 1:
-                images[0].save(outFilePath, save_all=True, append_images=images[1:], loop=0, duration=40)
+                images[0].save(outFilePath, save_all=True, append_images=images[1:], loop=0, duration=40, **saveargs)
             else:
-                images[0].save(outFilePath, save_all=True, append_images=images[1:])
+                images[0].save(outFilePath, save_all=True, append_images=images[1:], **saveargs)
 
     return
 
