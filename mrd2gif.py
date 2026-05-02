@@ -1,5 +1,7 @@
 #!/usr/bin/python3
 
+import contextlib
+import io
 import os
 import argparse
 import h5py
@@ -18,7 +20,8 @@ defaults = {
     'no_mosaic_slices': False,
     'mosaic_less_than': 6,
     'filetype':         'gif',
-    'series':           ''
+    'series':           '',
+    'quiet':            False
 }
 
 def ReadMrdImageSeries(dset: ismrmrd.Dataset, group: str) -> Tuple[List[Image.Image], List[List[Tuple]], List[Any], List[Any]]:
@@ -381,6 +384,14 @@ def MosaicImages(images: List[Image.Image], heads: List[Any], mosaic_less_than: 
         return images
 
 def main(args: argparse.Namespace) -> None:
+    """
+    Outer main function that allows suppression of stdout
+    """
+    ctx = contextlib.redirect_stdout(io.StringIO()) if getattr(args, 'quiet', False) else contextlib.nullcontext()
+    with ctx:
+        _main_inner(args)
+
+def _main_inner(args: argparse.Namespace) -> None:
     with h5py.File(args.filename, 'r') as dset:
         if not dset:
             print("Not a valid dataset: %s" % (args.filename))
@@ -505,6 +516,7 @@ if __name__ == '__main__':
     parser.add_argument(      '--mosaic-less-than', type=int,            help='Mosaic images with less than this number of images in series')
     parser.add_argument(      '--filetype',         type=str,            help='File type for output images (gif or png)')
     parser.add_argument('-s', '--series',           type=str,            help='Process only this single series (e.g. image_0)')
+    parser.add_argument('-q', '--quiet',            action='store_true', help='Suppress all stdout output')
 
     parser.set_defaults(**defaults)
 
