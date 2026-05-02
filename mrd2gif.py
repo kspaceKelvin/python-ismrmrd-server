@@ -10,9 +10,10 @@ import inspect
 from PIL import Image, ImageDraw
 
 defaults = {
-    'in_group':      '',
-    'rescale':        1,
-    'mosaic_slices': False
+    'in_group':         '',
+    'rescale':          1,
+    'no_mosaic_slices': False,
+    'mosaic_less_than': 6
 }
 
 def main(args):
@@ -215,8 +216,10 @@ def main(args):
                     imagesWL.append(img)
 
             # Combine multiple slices into a mosaic
-            if args.mosaic_slices:
+            isMosaic = False
+            if not args.no_mosaic_slices:
                 slices = [head.slice for head in heads]
+                contrasts = [head.contrast for head in heads]
 
                 if np.unique(slices).size > 1:
                     # Create a list where each element is all images from a given slice
@@ -240,6 +243,56 @@ def main(args):
                             imagesWLMosaic.append(tmpImg)
 
                         imagesWL = imagesWLMosaic
+                    isMosaic = True
+                elif np.unique(contrasts).size > 1:
+                    # Create a list where each element is all images from a given slice
+                    imagesWLSplit = []
+                    for contrast in np.unique(contrasts):
+                        imagesWLSplit.append([img for img, con in zip(imagesWL, contrasts) if con == contrast])
+
+                    if np.unique([len(imgs) for imgs in imagesWLSplit]).size > 1:
+                        print('  ERROR: Failed to create mosaic because not all contrasts have the same number of images -- skipping mosaic!')
+                    else:
+                        print(f'  Creating a mosaic of {len(imagesWLSplit[0])} images with {np.unique(contrasts).size} contrasts in each')
+
+                        # Loop over non-contrast dimension
+                        imagesWLMosaic = []
+                        for idx in range(len(imagesWLSplit[0])):
+                            imgMode = imagesWLSplit[0][idx].mode
+                            tmpImg = Image.fromarray(np.hstack([img[idx] for img in imagesWLSplit]), mode=imgMode)
+                            if imgMode == 'P':
+                                palette = imagesWLSplit[0][0].getpalette()
+                                tmpImg.putpalette(palette)
+                            imagesWLMosaic.append(tmpImg)
+
+                        imagesWL = imagesWLMosaic
+                    isMosaic = True
+
+            # Mosaic a small number of images instead of making an animated GIF
+            if (len(imagesWL) > 1) and (len(imagesWL) < args.mosaic_less_than) and not isMosaic:
+                print(f'  Creating a mosaic of {len(imagesWL)} images (number of images in series is <{args.mosaic_less_than})')
+
+                # Make sure all images have the same mode
+                modes = set([img.mode for img in imagesWL])
+                if len(modes) > 1:
+                    print('  Warning: Series has images with mixed modes of type: ' + ', '.join(modes) + ' -- converting to P type')
+                    if 'P' not in modes:
+                        raise Exception('Unhandled case of mixed modes without a P type')
+
+                    for i, img in enumerate(imagesWL):
+                        if img.mode != 'P':
+                            imagesWL[i] = imagesWL[i].convert('P')
+
+                imagesWLMosaic = []
+
+                imgMode = imagesWL[0].mode
+                tmpImg = Image.fromarray(np.hstack([img for img in imagesWL]), mode=imgMode)
+                if imgMode == 'P':
+                    palette = imagesWL[0].getpalette()
+                    tmpImg.putpalette(palette)
+                imagesWLMosaic.append(tmpImg)
+
+                imagesWL = imagesWLMosaic
 
             # Add SequenceDescriptionAdditional to filename, if present
             image = dset.read_image(group, 0)
@@ -258,7 +311,7 @@ def main(args):
             gifFilePath = os.path.join(os.path.dirname(args.filename), gifFileName)
 
             print("  Writing image: %s " % (gifFilePath))
-            if len(images) > 1:
+            if len(imagesWL) > 1:
                 imagesWL[0].save(gifFilePath, save_all=True, append_images=imagesWL[1:], loop=0, duration=40)
             else:
                 imagesWL[0].save(gifFilePath, save_all=True, append_images=imagesWL[1:])
@@ -268,10 +321,11 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Convert MRD image file to animated GIF',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('filename',                                   help='Input file')
-    parser.add_argument('-g', '--in-group',                           help='Input data group')
-    parser.add_argument('-r', '--rescale',       type=int,            help='Rescale factor (integer) for output images')
-    parser.add_argument('-m', '--mosaic-slices', action='store_true', help='Mosaic images along slice dimension')
+    parser.add_argument('filename',                                      help='Input file')
+    parser.add_argument('-g', '--in-group',                              help='Input data group')
+    parser.add_argument('-r', '--rescale',          type=int,            help='Rescale factor (integer) for output images')
+    parser.add_argument(      '--no-mosaic-slices', action='store_true', help='Do not mosaic images along slice dimension')
+    parser.add_argument(      '--mosaic-less-than', type=int,            help='Mosaic images with less than this number of images in series')
 
     parser.set_defaults(**defaults)
 
