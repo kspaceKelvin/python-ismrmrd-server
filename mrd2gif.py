@@ -203,6 +203,69 @@ def ApplyWindowColormapROI(images, rois, heads, metas, rescale):
 
     return imagesWL
 
+def MosaicImageData(images: List[Any], rows: Optional[int] = None, cols: Optional[int] = None) -> np.ndarray:
+    """
+    Create a tiled mosaic of images.
+
+    Create a mosaic image from a list of input images. Rows and cols
+    can be provided or automatically calculated.
+    
+    Args:
+        images: Images in PIL.Image format or numpy arrays.
+        rows: Number of rows. Automatically calculated if None.
+        cols: Number of cols. Automatically calculated if None.
+
+    Returns:
+        Mosaic image as numpy array.
+    """
+
+    shape = np.array(images[0]).shape
+    numImages = len(images)
+
+    if rows is None and cols is not None:
+        rows = np.ceil(numImages/cols).astype(int)
+    elif rows is not None and cols is None:
+        cols = np.ceil(numImages/rows).astype(int)
+    elif rows is None and cols is None:
+        targetAspectRatio = 16/9
+        imageAspectRatio = shape[1]/shape[0]
+
+        cols = np.ceil(np.sqrt(numImages/targetAspectRatio/imageAspectRatio)).astype(int)
+        rows = np.ceil(numImages/cols).astype(int)
+
+        # Prevent images that are too tall
+        if (shape[1]*cols) / (shape[0]*rows) < 0.67:
+            # print(f'Mosaic is shape: ({shape[0]*rows}, {shape[1]*cols}) ({rows} rows x {cols} cols), with an aspect ratio of {(shape[1]*cols) / (shape[0]*rows)}, lower than threshold -- Overriding mosaic to have one less row')
+            rows = np.max((rows-1, 1))
+            cols = np.ceil(numImages / rows).astype(int)
+
+    # Prevent blank tile with single row/col mosaics
+    if (cols == 1) and (rows != numImages):
+        rows = numImages
+
+    if (rows == 1) and (cols != numImages):
+        cols = numImages
+
+    if rows*cols < numImages:
+        print('Error: {rows} rows x {cols} cols is insufficient for {numImages} images')
+        return None
+
+    height = shape[0]*rows
+    width  = shape[1]*cols
+    mosaicArray = np.zeros((height, width) + shape[2:], dtype=np.array(images[0]).dtype)
+
+    # print(f'Mosaic is shape: {mosaicArray.shape} ({rows} rows x {cols} cols)')
+
+    for row in range(rows):
+        for col in range(cols):
+            idx = row*cols + col
+            if idx >= len(images):
+                continue
+
+            mosaicArray[row*shape[0]:(row+1)*shape[0], col*shape[1]:(col+1)*shape[1], ...] = images[idx]
+
+    return mosaicArray
+
 def MosaicImages(images: List[Image.Image], heads: List[Any], mosaic_less_than: int = 6) -> List[Image.Image]:
     """
     Combine multiple images into a mosaic.
@@ -266,7 +329,7 @@ def MosaicImages(images: List[Image.Image], heads: List[Any], mosaic_less_than: 
 
         # Create (single-frame) mosaic
         imgMode = imagesSplit[0].mode
-        tmpImg = Image.fromarray(np.hstack([img for img in imagesSplit]), mode=imgMode)
+        tmpImg = Image.fromarray(MosaicImageData(imagesSplit), mode=imgMode)
         
         if imgMode == 'P':
             palette = imagesSplit[0].getpalette()
@@ -279,7 +342,7 @@ def MosaicImages(images: List[Image.Image], heads: List[Any], mosaic_less_than: 
         imagesMosaic = []
         for idx in range(len(imagesSplit[0])):
             imgMode = imagesSplit[0][idx].mode
-            tmpImg = Image.fromarray(np.hstack([img[idx] for img in imagesSplit]), mode=imgMode)
+            tmpImg = Image.fromarray(MosaicImageData([img[idx] for img in imagesSplit]), mode=imgMode)
             if imgMode == 'P':
                 palette = imagesSplit[0][0].getpalette()
                 tmpImg.putpalette(palette)
