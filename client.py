@@ -360,6 +360,7 @@ def main(args):
             mrd2gifargs = SimpleNamespace(**mrd2gif.defaults)
             mrd2gifargs.filename = args.outfile
             mrd2gifargs.in_group = args.out_group
+            mrd2gifargs.quiet    = args.quiet
 
             logging.info('Calling mrd2gif...')
             mrd2gif.main(mrd2gifargs)
