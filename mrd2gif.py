@@ -37,6 +37,7 @@ def ReadMrdImageSeries(dset: ismrmrd.Dataset, group: str) -> Tuple[List[Image.Im
     heads  = []
     metas  = []
 
+    warnIfComplex = True
     for imgNum in range(0, dset.number_of_images(group)):
         image = dset.read_image(group, imgNum)
 
@@ -47,8 +48,10 @@ def ReadMrdImageSeries(dset: ismrmrd.Dataset, group: str) -> Tuple[List[Image.Im
             images.append(Image.fromarray(data, mode='RGB'))
         else:
             data = image.data
-            if np.any(np.iscomplex(data)):
-                print("  Converting image %d from complex to magnitude for display" % imgNum)
+            if np.iscomplexobj(data):
+                if warnIfComplex:
+                    print("  Converting images in series %s from complex to magnitude" % group)
+                    warnIfComplex = False
                 data = np.abs(data)
 
             for cha in range(data.shape[0]):
@@ -79,15 +82,21 @@ def ReadMrdImageSeries(dset: ismrmrd.Dataset, group: str) -> Tuple[List[Image.Im
 
             imgRois.append((x, y, rgb, thickness))
 
+        # Don't use consider channels dimension for RGB images
+        if image.getHead().image_type == 6:
+            numchasli = image.data.shape[1]
+        else:
+            numchasli = image.data.shape[0]*image.data.shape[1]
+
         # Same ROIs for each channel and slice (in a single MRD image)
-        for chasli in range(image.data.shape[0]*image.data.shape[1]):
+        for chasli in range(numchasli):
             rois.append(imgRois)
 
         # MRD ImageHeader
-        for chasli in range(image.data.shape[0]*image.data.shape[1]):
+        for chasli in range(numchasli):
             heads.append(image.getHead())
 
-        for chasli in range(image.data.shape[0]*image.data.shape[1]):
+        for chasli in range(numchasli):
             metas.append(meta)
 
     return (images, rois, heads, metas)
