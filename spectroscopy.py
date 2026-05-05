@@ -230,6 +230,7 @@ def process_raw(group, connection, config, metadata):
                                 ctypes.c_float(metadata.encoding[0].reconSpace.fieldOfView_mm.z))
 
     tmpImg.image_index   = 1
+    tmpImg.image_type    = ismrmrd.IMTYPE_COMPLEX
     tmpImg.flags         = 2**5   # IMAGE_LAST_IN_AVERAGE
  
     logging.info("Outgoing spectroscopy data is field_of_view %s, %s, %s" % (np.double(tmpImg.field_of_view[0]), np.double(tmpImg.field_of_view[1]), np.double(tmpImg.field_of_view[2])))
