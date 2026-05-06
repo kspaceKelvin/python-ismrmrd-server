@@ -330,6 +330,7 @@ def plot_spectra(img, connection, config, metadata):
     # Set the header information
     tmpHead = img.getHead()
     tmpHead.data_type     = roiImg.data_type
+    tmpHead.image_type    = ismrmrd.IMTYPE_MAGNITUDE
     tmpHead.field_of_view = (ctypes.c_float( imgX), ctypes.c_float( imgY), ctypes.c_float(10))  # Dummy FOV because the spectroscopy FOV isn't appropriate
     tmpHead.matrix_size   = (ctypes.c_ushort(imgX), ctypes.c_ushort(imgY), ctypes.c_ushort(1))
     roiImg.setHead(tmpHead)
