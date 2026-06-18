@@ -598,7 +598,7 @@ def _main_inner(args: argparse.Namespace) -> None:
 
                         # Keep the strongest response from either the display-space
                         # diff or the windowed raw diff at each pixel.
-                        diffImg = np.maximum(displayDiff.astype(np.float32), diffImg.astype(np.float32))
+                        diffImg = np.maximum(displayDiff.astype(np.float32), np.atleast_3d(diffImg).astype(np.float32))
                     else:
                         # Apply optional scaling to improve visibility of scalar images
                         diffImg = diffImg*args.ref_diff_scale
