@@ -162,6 +162,11 @@ def ComputeWindowRanges(images: List[Any], metas: List[Dict[str, Any]]) -> Tuple
         windowCenter = GetMetaValueFromCandidates(meta, 'WindowCenter', 'GADGETRON_WindowCenter')
         windowWidth  = GetMetaValueFromCandidates(meta, 'WindowWidth',  'GADGETRON_WindowWidth')
 
+        # In Gadgetron data, GADGETRON_WindowWidth does not take into account GADGETRON_ScaleRatio (contrary to DICOM interpretation)
+        if (meta.get('GADGETRON_ScaleRatio') is not None) and (meta.get('GADGETRON_ScaleOffset') is not None):
+            if (meta.get('GADGETRON_WindowWidth') is not None) and (meta.get('WindowWidth') is None):
+                windowWidth = str(float(windowWidth) / float(meta.get('GADGETRON_ScaleRatio')))
+
         if (windowCenter is None) or (windowWidth is None):
             metaRanges.append(None)
         else:
@@ -191,6 +196,59 @@ def ComputeWindowRanges(images: List[Any], metas: List[Dict[str, Any]]) -> Tuple
     filledRanges = [r if r is not None else firstMetaRange for r in metaRanges]
     minVals, maxVals = zip(*filledRanges)
     return (list(minVals), list(maxVals))
+
+def ApplyRescaleSlopeIntercept(images: List[Image.Image], metas: List[Dict[str, Any]]) -> List[Image.Image]:
+    """
+    Apply per-image RescaleSlope/RescaleIntercept from MetaAttributes.
+
+    For each image, if both RescaleSlope and RescaleIntercept are present in
+    MetaAttributes, compute:
+        val = raw * RescaleSlope + RescaleIntercept
+
+    If these aren't present, apply Gadgetron ScaleOffset and ScaleRatio:
+        val = (raw - GADGETRON_ScaleOffset) / GADGETRON_ScaleRatio 
+
+    Args:
+        images: Input images in PIL.Image format.
+        metas: MetaAttributes for each image.
+
+    Returns:
+        Images with scaling applied only when both parameters are present.
+        Images without applicable parameters are returned unchanged.
+    """
+
+    imagesScaled = []
+    for imgIdx, (img, meta) in enumerate(zip(images, metas)):
+        RescaleSlope     = meta.get('RescaleSlope')
+        RescaleIntercept = meta.get('RescaleIntercept')
+
+        if (RescaleSlope is None) or (RescaleIntercept is None):
+            # Fall back to Gadgetron attribs
+            ScaleRatio   = meta.get('GADGETRON_ScaleRatio')
+            ScaleOffset  = meta.get('GADGETRON_ScaleOffset')
+
+            if (ScaleRatio is not None) and (ScaleOffset is not None):
+                RescaleSlope = 1.0 / float(ScaleRatio)
+                RescaleIntercept = -1.0 * float(ScaleOffset) / float(ScaleRatio)
+
+        if (RescaleSlope is None) or (RescaleIntercept is None):
+            imagesScaled.append(img)
+            continue
+
+        if not np.isscalar(RescaleSlope):
+            raise TypeError("RescaleSlope must be a scalar value, got %s for image index %d" % (type(RescaleSlope).__name__, imgIdx))
+        if not np.isscalar(RescaleIntercept):
+            raise TypeError("RescaleIntercept must be a scalar value, got %s for image index %d" % (type(RescaleIntercept).__name__, imgIdx))
+
+        try:
+            data = np.array(img).astype(np.float32)
+            data = data*float(RescaleSlope) + float(RescaleIntercept)
+            imagesScaled.append(Image.fromarray(data))
+
+        except (TypeError, ValueError):
+            imagesScaled.append(img)
+
+    return imagesScaled
 
 def ApplyWindowLevel(images: List[Image.Image], minVals: List[float], maxVals: List[float]) -> List[Image.Image]:
     """
@@ -548,6 +606,9 @@ def _main_inner(args: argparse.Namespace) -> None:
             (images, rois, heads, metas) = ReadMrdImageSeries(dset, group)
             print("  Read in %s images of shape %s" % (len(images), images[0].size[::-1]))
 
+            # Apply RescaleSlope and RescaleIntercept, if applicable
+            images = ApplyRescaleSlopeIntercept(images, metas)
+
             # Keep original image data for diff
             imagesRaw = [np.array(img).astype(np.float32) for img in images]
 
@@ -563,7 +624,10 @@ def _main_inner(args: argparse.Namespace) -> None:
                 with ismrmrd.Dataset(args.ref_filename, refInGroup, create_if_needed=False, **modeargs) as dsetRef:
                     (imagesRef, roisRef, headsRef, metasRef) = ReadMrdImageSeries(dsetRef, group)
                 print("  Read in %s reference images of shape %s" % (len(imagesRef), imagesRef[0].size[::-1]))
-                
+
+                # Apply RescaleSlope and RescaleIntercept, if applicable
+                imagesRef = ApplyRescaleSlopeIntercept(imagesRef, metasRef)
+
                 if len(imagesRef) != len(images):
                     print("  Warning: Number of reference images (%d) does not match number of source images (%d)" % (len(imagesRef), len(images)))
                     continue
