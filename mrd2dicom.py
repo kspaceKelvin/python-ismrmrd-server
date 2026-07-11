@@ -107,9 +107,11 @@ def main(args):
                 print("RGB data not yet supported")
                 continue
             else:
-                if (mrdImg.data.shape[1] != 1):
-                    print("Multi-slice data not yet supported")
-                    continue
+                # Test for multi slice data
+                DataIsMultiSlice = False
+                if (mrdImg.data.shape[1] > 1):
+                  DataIsMultiSlice = True
+                  print("  Image %d is a 3D volume with %d slices" % (imgNum, mrdImg.data.shape[1]))
 
                 if (mrdImg.data.shape[0] != 1):
                     print("Multi-channel data not yet supported")
@@ -120,7 +122,7 @@ def main(args):
                     dicomDset = pydicom.dataset.Dataset.from_json(base64.b64decode(meta['DicomJson']))
                 else:
                     dicomDset = pydicom.dataset.Dataset()
-                dicomDset = pydicom.dataset.Dataset()
+                # dicomDset = pydicom.dataset.Dataset()    # Double, already executed if no JSON header exists
 
                 # Enforce explicit little endian for written DICOM files
                 dicomDset.file_meta                            = pydicom.dataset.FileMetaDataset()
@@ -183,11 +185,6 @@ def main(args):
                 except:
                     print("Error setting header information from MRD header's acquisitionSystemInformation section")
 
-                # Set mrdImg pixel data from MRD mrdImg
-                dicomDset.PixelData = np.squeeze(mrdImg.data).tobytes() # mrdImg.data is [cha z y x] -- squeeze to [y x] for [row col]
-                dicomDset.Rows      = mrdImg.data.shape[2]
-                dicomDset.Columns   = mrdImg.data.shape[3]
-
                 if (mrdImg.data.dtype == 'uint16') or (mrdImg.data.dtype == 'int16'):
                     dicomDset.BitsAllocated = 16
                     dicomDset.BitsStored    = 16
@@ -202,9 +199,6 @@ def main(args):
                     dicomDset.HighBit       = 63
                 else:
                     print("Unsupported data type: ", mrdImg.data.dtype)
-
-                dicomDset.SeriesNumber               = mrdImg.image_series_index
-                dicomDset.InstanceNumber             = mrdImg.image_index
 
                 # ----- Set some mandatory default values -----
                 if not 'SamplesPerPixel' in dicomDset:
@@ -279,6 +273,38 @@ def main(args):
                 # Unhandled fields:
                 # LUTFileName
                 # ROI
+
+                if DataIsMultiSlice:
+
+                  # Loop over slices
+                  for sli in range(mrdImg.data.shape[1]):
+        
+                    # Set mrdImg pixel data from MRD mrdImg
+                    dicomDset.PixelData = np.squeeze(mrdImg.data[:,sli,:,:]).tobytes() # mrdImg.data is [cha z y x] -- squeeze to [y x] for [row col]
+                    dicomDset.Rows      = mrdImg.data.shape[2]
+                    dicomDset.Columns   = mrdImg.data.shape[3]
+                    dicomDset.SeriesNumber               = mrdImg.image_series_index
+                    dicomDset.InstanceNumber             = mrdImg.image_index + sli
+
+                    # Create folder for each group
+                    Groupfolder = os.path.join(args.out_folder, group)
+                    if not os.path.exists(Groupfolder):
+                      os.makedirs(Groupfolder)
+
+                    # Write DICOM files
+                    fileName = "%02.0f_%s_%03.0f.dcm" % (dicomDset.SeriesNumber, dicomDset.SeriesDescription, dicomDset.InstanceNumber)
+                    # print("  Writing file %s" % fileName)
+                    dicomDset.save_as(os.path.join(Groupfolder, fileName), enforce_file_format=True)
+                    filesWritten += 1
+        
+        else:
+
+                # Set mrdImg pixel data from MRD mrdImg
+                dicomDset.PixelData = np.squeeze(mrdImg.data).tobytes() # mrdImg.data is [cha z y x] -- squeeze to [y x] for [row col]
+                dicomDset.Rows      = mrdImg.data.shape[2]
+                dicomDset.Columns   = mrdImg.data.shape[3]
+                dicomDset.SeriesNumber               = mrdImg.image_series_index
+                dicomDset.InstanceNumber             = mrdImg.image_index
 
                 # Write DICOM files
                 fileName = "%02.0f_%s_%03.0f.dcm" % (dicomDset.SeriesNumber, dicomDset.SeriesDescription, dicomDset.InstanceNumber)
