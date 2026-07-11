@@ -1,0 +1,29 @@
+[project]
+name = "python-ismrmrd-server"
+version = "0.1.0"
+description = "MRD client/server pair and MRD format convertion utilities"
+readme = "readme.md"
+requires-python = ">=3.12"
+dependencies = [
+    "ismrmrd>=1.14.2",
+    "matplotlib>=3.10.7",
+    "numpy>=2.3.4",
+    "pydicom>=3.0.1",
+]
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "black",
+    "isort",
+]
+[tool.setuptools.packages.find]
+# Include all packages found under "src"
+include = ["*py"]
+# Exclude tests and docs directories
+exclude = ["docker", "*sh", "tests/"]
+
+[pytest]
+tmp_path_retention_count = 1
+
+[tool.pytest.ini_options]
+norecursedirs = "tests/helpers"
