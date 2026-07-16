@@ -620,7 +620,7 @@ def _main_inner(args: argparse.Namespace) -> None:
 
             is_diff = False
             # If applicable, load in a reference dataset for comparison/diff
-            try:
+            if args.ref_filename and refInGroup:
                 with ismrmrd.Dataset(args.ref_filename, refInGroup, create_if_needed=False, **modeargs) as dsetRef:
                     (imagesRef, roisRef, headsRef, metasRef) = ReadMrdImageSeries(dsetRef, group)
                 print("  Read in %s reference images of shape %s" % (len(imagesRef), imagesRef[0].size[::-1]))
@@ -679,8 +679,6 @@ def _main_inner(args: argparse.Namespace) -> None:
 
                 images = imagesCombined
                 is_diff = True
-            except:
-                pass
 
             if not args.no_mosaic_slices:
                 images = MosaicImages(images, heads, args.mosaic_less_than)
