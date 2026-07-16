@@ -24,6 +24,7 @@ defaults = {
     'ref_in_group':     '',
     'ref_diff_scale':   1.0,
     'series':           '',
+    'floating_window':  False,
     'quiet':            False
 }
 
@@ -130,7 +131,7 @@ def GetMetaValueFromCandidates(meta: Dict[str, Any], *keys: str) -> Optional[Any
 
     return None
 
-def ComputeWindowRanges(images: List[Any], metas: List[Dict[str, Any]]) -> Tuple[List[float], List[float]]:
+def ComputeWindowRanges(images: List[Any], metas: List[Dict[str, Any]], floatingWindow: bool = False) -> Tuple[List[float], List[float]]:
     """
     Compute series-wide window/level range for an image series.
 
@@ -141,20 +142,32 @@ def ComputeWindowRanges(images: List[Any], metas: List[Dict[str, Any]]) -> Tuple
     Returns:
         Tuple of (minVals, maxVals), each a per-image list.
         If all images have explicit metadata window/level values, use those per
-        image values.  Otherwise, fall back to one series-wide range for all images.
+        image values.  Otherwise:
+          - floatingWindow = True: Compute per-image ranges
+          - floatingWindow = True: Compute one series-wide range for all images.
     """
 
     if len(images) == 0:
         return ([], [])
 
-    # Window/level defaults for all images in series
-    seriesMaxVal = np.median([np.percentile(np.array(img), 95) for img in images])
-    seriesMinVal = np.median([np.percentile(np.array(img),  5) for img in images])
+    # Per-image window/level from image intensity distribution
+    imgMaxVals = [np.percentile(np.asarray(img), 95) for img in images]
+    imgMinVals = [np.percentile(np.asarray(img),  5) for img in images]
+
+    # Series-wide defaults for legacy behavior
+    seriesMaxVal = np.median(imgMaxVals)
+    seriesMinVal = np.median(imgMinVals)
 
     # Special case for "sparse" images, usually just text
     if seriesMaxVal == seriesMinVal:
-        seriesMaxVal = np.median([np.max(np.array(img)) for img in images])
-        seriesMinVal = np.median([np.min(np.array(img)) for img in images])
+        seriesMaxVal = np.median([np.max(np.asarray(img)) for img in images])
+        seriesMinVal = np.median([np.min(np.asarray(img)) for img in images])
+
+    if floatingWindow:
+        for i, (minVal, maxVal) in enumerate(zip(imgMinVals, imgMaxVals)):
+            if np.isclose(minVal, maxVal):
+                imgMinVals[i] = np.min(np.asarray(images[i]))
+                imgMaxVals[i] = np.max(np.asarray(images[i]))
 
     # Extract window/level from each image's metadata
     metaRanges = []
@@ -179,7 +192,10 @@ def ComputeWindowRanges(images: List[Any], metas: List[Dict[str, Any]]) -> Tuple
 
     # Case 1: No metadata ranges -> use series-wide range for all images.
     if len(nonNoneRanges) == 0:
-        return ([seriesMinVal] * len(images), [seriesMaxVal] * len(images))
+        if floatingWindow:
+            return (list(imgMinVals), list(imgMaxVals))
+        else:
+            return ([seriesMinVal] * len(images), [seriesMaxVal] * len(images))
 
     # Case 2: Metadata ranges for all images -> use per-image metadata ranges.
     if len(metaRanges) == len(images) and all(r is not None for r in metaRanges):
@@ -613,7 +629,7 @@ def _main_inner(args: argparse.Namespace) -> None:
             imagesRaw = [np.array(img).astype(np.float32) for img in images]
 
             # Compute window/level using MetaAttributes if present, otherwise 5/95th percentile of pixel values
-            minVals, maxVals = ComputeWindowRanges(images, metas)
+            minVals, maxVals = ComputeWindowRanges(images, metas, args.floating_window)
             images = ApplyWindowLevel(images, minVals, maxVals)
 
             images = ApplyColormapROI(images, rois, heads, metas, args.rescale)
@@ -743,6 +759,7 @@ if __name__ == '__main__':
     parser.add_argument(      '--ref-in-group',     type=str,            help='Data group in reference file')
     parser.add_argument(      '--ref-diff-scale',   type=float,          help='Scaling factor for difference image')
     parser.add_argument('-s', '--series',           type=str,            help='Process only this single series (e.g. image_0)')
+    parser.add_argument(      '--floating-window',  action='store_true', help='Use per-image window/level fallback instead of one series-wide window/level')
     parser.add_argument('-q', '--quiet',            action='store_true', help='Suppress all stdout output')
 
     parser.set_defaults(**defaults)
