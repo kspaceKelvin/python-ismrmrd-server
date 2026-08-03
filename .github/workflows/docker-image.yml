@@ -6,8 +6,10 @@ on:
       - main
       - master
       - 'feature/*'
+      - macos
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
 
 jobs:
   build_devcontainer:
