@@ -26,13 +26,14 @@ defaults = {
     'config_local':       '',
     'ignore_json_config': False,
     'send_waveforms':     False,
+    'fix_transposed':     False,
     'verbose':            False,
     'logfile':            '',
     'quiet':              False,
     'mrd2gif':            False
 }
 
-def connection_receive_loop(sock, outfile, outgroup, verbose, logfile, quiet, recvAcqs, recvImages, recvWaveforms):
+def connection_receive_loop(sock, outfile, outgroup, verbose, logfile, quiet, fixTransposed, recvAcqs, recvImages, recvWaveforms):
     """Start a Connection instance to receive data, generally run in a separate thread"""
 
     if verbose:
@@ -48,6 +49,10 @@ def connection_receive_loop(sock, outfile, outgroup, verbose, logfile, quiet, re
         logging.basicConfig(format='%(asctime)s - %(message)s', level=verbosity)
 
     incoming_connection = Connection(sock, True, outfile, "", outgroup)
+
+    if fixTransposed:
+        logging.warning('fix-transposed is True -- received images may be transposed if needed to ensure uniform dimensions across all images in a series')
+        incoming_connection.fixTransposed = True
 
     try:
         for msg in incoming_connection:
@@ -194,7 +199,7 @@ def main(args):
     recvAcqs      = multiprocessing.Value('i', 0)
     recvImages    = multiprocessing.Value('i', 0)
     recvWaveforms = multiprocessing.Value('i', 0)
-    process = multiprocessing.Process(target=connection_receive_loop, args=(sock, args.outfile, args.out_group, args.verbose, args.logfile, args.quiet, recvAcqs, recvImages, recvWaveforms))
+    process = multiprocessing.Process(target=connection_receive_loop, args=(sock, args.outfile, args.out_group, args.verbose, args.logfile, args.quiet, args.fix_transposed, recvAcqs, recvImages, recvWaveforms))
     process.daemon = True
     process.start()
 
@@ -382,6 +387,7 @@ if __name__ == '__main__':
     parser.add_argument('-c', '--config',                                  help='Remote configuration file')
     parser.add_argument('-C', '--config-local',                            help='Local configuration file')
     parser.add_argument('-w', '--send-waveforms',     action='store_true', help='Send waveform (physio) data')
+    parser.add_argument(      '--fix-transposed',     action='store_true', help='Fix transposed images when storing to an MRD file')
     parser.add_argument('-v', '--verbose',            action='store_true', help='Verbose mode')
     parser.add_argument('-l', '--logfile',            type=str,            help='Path to log file')
     parser.add_argument('-q', '--quiet',              action='store_true', help='Suppress stdout logging')

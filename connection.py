@@ -17,6 +17,7 @@ class Connection:
         self.savedataFile   = savedataFile
         self.savedataFolder = savedataFolder
         self.savedataGroup  = savedataGroup
+        self.fixTransposed  = False
         self.mrdFilePath    = None
         self.dset           = None
         self.socket         = socket
@@ -385,6 +386,53 @@ class Connection:
         image.data.ravel()[:] = np.frombuffer(data_bytes, dtype=image.data.dtype)
 
         if self.savedata is True:
+            # MRD HDF5 files store all images in a series in a single ND array.  If images in
+            # the same series have a different matrix size, they cannot be stored.  In the
+            # special case where the row/column dimensions are transposed (e.g. due to
+            # transformation into DICOM orientation) and the fixTransposed option is enabled,
+            # transpose the images, update the metadata, and store the image.
+            seriesName = "image_%d" % image.image_series_index
+            if self.dset and seriesName in self.dset.list():
+                prevShape = self.dset.read_image("image_%d" % image.image_series_index, self.dset.number_of_images(seriesName)-1).data.shape
+
+                if image.data.shape != prevShape:
+                    if self.fixTransposed:
+                        if tuple(reversed(image.data.shape[-2:])) == prevShape[-2:]:
+                            logging.warning(f'    Incoming image for series {image.image_series_index} has shape {image.data.shape}, where the rows and columns are tranposed of current data in the series with shape {prevShape} -- Will transpose the image before storing!')
+                            # If it's just the transpose, then create a new transposed image
+                            imgT = ismrmrd.Image.from_array(image.data.transpose((0,1,3,2)), transpose=False)
+
+                            # Transpose the row/columns in the header before copying, otherwise it'll resize the data
+                            tmpHead = image.getHead()
+                            tmpHead.matrix_size[0] = image.getHead().matrix_size[1]
+                            tmpHead.matrix_size[1] = image.getHead().matrix_size[0]
+
+                            # Swap the x/y field of view
+                            tmpHead.field_of_view[0]  = image.getHead().field_of_view[1]
+                            tmpHead.field_of_view[1]  = image.getHead().field_of_view[0]
+
+                            # Swap the read/phase directions
+                            tmpHead.read_dir  = image.getHead().phase_dir
+                            tmpHead.phase_dir = image.getHead().read_dir
+
+                            imgT.setHead(tmpHead)
+
+                            # Update the ImageRowDir/ImageColumnDir too, if present
+                            tmpMeta = ismrmrd.Meta.deserialize(image.attribute_string)
+                            if (tmpMeta.get('ImageRowDir') is not None) and (tmpMeta.get('ImageColumnDir') is not None):
+                                oldRowDir = tmpMeta['ImageRowDir']
+                                tmpMeta['ImageRowDir']    = tmpMeta['ImageColumnDir']
+                                tmpMeta['ImageColumnDir'] = oldRowDir
+
+                            imgT.attribute_string = tmpMeta.serialize()
+
+                            image = imgT
+                        else:
+                            logging.error(f'    Incoming image for series {image.image_series_index} has shape {image.data.shape} which is not the same shape as existing current data in the series {prevShape}!')
+                    else:
+                        logging.error(f'    Incoming image for series {image.image_series_index} has shape {image.data.shape} which is not the same shape as existing current data in the series {prevShape}!')
+                        logging.error(f'    If the last two dimensions are transposed, the option --fix-tranposed in the client can be used to swap dimensions before writing to file')
+
             if self.dset is None:
                 self.create_save_file()
             self.dset.append_image("image_%d" % image.image_series_index, image)
