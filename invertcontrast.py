@@ -156,12 +156,12 @@ def process_raw(acqGroup, connection, config, mrdHeader):
     # Group readouts by a composite index of all loop counters
     # i.e. all readouts with the same loop counters (excluding phase and partition encode) will be in the same group
     # Note that user indices 5 and 6 are excluded as these are used to represent center lin/par
+    DIM_NAMES = ('average', 'slice', 'contrast', 'phase', 'repetition', 'set', 'segment', 
+                'user[0]', 'user[1]', 'user[2]', 'user[3]', 'user[4]')
 
-    # 1. Define the namedtuple
-    IndexKey = namedtuple('IndexKey', ['avg', 'slc', 'con', 'phs', 'rep', 'set', 'seg', 'user'])
     indexedAcqs = defaultdict(list)
     for acq in acqGroup:
-        key = IndexKey(
+        key = (
             acq.idx.average,
             acq.idx.slice,
             acq.idx.contrast,
@@ -169,19 +169,28 @@ def process_raw(acqGroup, connection, config, mrdHeader):
             acq.idx.repetition,
             acq.idx.set,
             acq.idx.segment,
-            tuple(acq.idx.user[0:5]),
+            *acq.idx.user[0:5]
         )
         indexedAcqs[key].append(acq)
 
+    # Find indices of loop/index dimensions that vary
+    maxIndices = np.max(list(indexedAcqs.keys()), axis=0)
+    activeIndices = [i for i, m in enumerate(maxIndices) if m > 0]
+
+    # Log summary outside of loop
+    if activeIndices:
+        nonSingletonSummary = ", ".join(f"{DIM_NAMES[i]}={maxIndices[i] + 1}" for i in activeIndices)
+        logging.info(f"Processing {len(indexedAcqs)} images across dimensions: {nonSingletonSummary})")
 
     imagesOut = []  # Accumulated list of all reconstructed images
 
     for imgIdx, (key, acqs) in enumerate(sorted(indexedAcqs.items())):
         # Log the active loop indices in this iteration
-        active = [f"{k}={v}" for k, v in key._asdict().items() if k != 'user' and v != 0]
-        active += [f"user[{i}]={v}" for i, v in enumerate(key.user) if v != 0]
-        dim_str = ", ".join(active) or "all 0"
-        logging.info(f"Reconstructing image {imgIdx} (idx {dim_str})")
+        if activeIndices:
+            dim_str = "idx " + ", ".join(f"{DIM_NAMES[i]}={key[i]}" for i in activeIndices) 
+        else:
+            dim_str = "single image"
+        logging.info(f"Reconstructing image {imgIdx} ({dim_str})")
 
         if mrdHeader.encoding[0].encodedSpace.matrixSize.z == 1:
             # 2D data: Format data into single [cha PE RO] array
