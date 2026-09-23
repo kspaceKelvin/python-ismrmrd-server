@@ -1,0 +1,57 @@
+site_name: python-ismrmrd-server
+site_description: Python MRD client and server reference implementation
+site_url: https://kspacekelvin.github.io/python-ismrmrd-server/
+repo_url: https://github.com/kspaceKelvin/python-ismrmrd-server
+repo_name: kspaceKelvin/python-ismrmrd-server
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+
+extra_css:
+    - stylesheets/extra.css
+
+markdown_extensions:
+    - pymdownx.highlight
+    - pymdownx.superfences
+    - admonition
+    - toc
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Quickstart: getting-started/quickstart.md
+      - Custom Modules: getting-started/custom-modules.md
+      - Scanner Raw Data: getting-started/scanner-raw-data.md
+      - DICOM Input Data: getting-started/dicom-input-data.md
+  - Architecture:
+      - Code Design: architecture/code-design.md
+      - JSON Config: architecture/json-config.md
+  - Environments:
+      - Devcontainer: environments/devcontainer.md
+      - Conda: environments/conda.md
+      - uv: environments/uv.md
+      - Docker: environments/docker.md
+  - Operations:
+      - Saving Incoming Data: operations/saving-data.md
+      - Startup Scripts: operations/startup-scripts.md
+  - Deployment:
+      - Custom Docker Image: deployment/custom-docker.md
+  - Code Snippets:
+      - Overview: code-snippets/index.md
+      - Reading JSON Config: code-snippets/json-config.md
+      - Handling 3D Volumes: code-snippets/3d-volumes.md
+      - Creating ROI Overlays: code-snippets/roi-overlays.md
+      - RGB Color Images: code-snippets/rgb-images.md
+      - Creating an MRD Image from Scratch: code-snippets/mrd-image-from-scratch.md
+      - Storing Data in MetaAttributes: code-snippets/metaattributes.md
+      - Calling External Binaries: code-snippets/external-binaries.md
+      - Extracting User Parameters: code-snippets/user-parameters.md
+      - Creating New Series: code-snippets/new-series.md
+      - Spectroscopy Settings: code-snippets/spectroscopy.md
