@@ -32,32 +32,20 @@ def create(filename='testdata.h5', matrix_size=256, coils=8, oversampling=2, rep
     # Open the dataset
     dset = ismrmrd.Dataset(filename, "dataset", create_if_needed=True)
 
-    # Create the XML header and write it to the file
-    header = ismrmrd.xsd.ismrmrdHeader()
-
     # Experimental Conditions
-    exp = ismrmrd.xsd.experimentalConditionsType()
-    exp.H1resonanceFrequency_Hz = 128000000
-    header.experimentalConditions = exp
+    exp = ismrmrd.xsd.experimentalConditionsType(H1resonanceFrequency_Hz=128000000)
+
+    # Create the XML header and write it to the file
+    header = ismrmrd.xsd.ismrmrdHeader(experimentalConditions=exp)
 
     # Acquisition System Information
     sys = ismrmrd.xsd.acquisitionSystemInformationType()
     sys.receiverChannels = coils
     header.acquisitionSystemInformation = sys
 
-    # Encoding
-    encoding = ismrmrd.xsd.encodingType()
-    encoding.trajectory = ismrmrd.xsd.trajectoryType('cartesian')
-
     # encoded and recon spaces
-    efov = ismrmrd.xsd.fieldOfViewMm()
-    efov.x = oversampling*256
-    efov.y = 256
-    efov.z = 5
-    rfov = ismrmrd.xsd.fieldOfViewMm()
-    rfov.x = 256
-    rfov.y = 256
-    rfov.z = 5
+    efov = ismrmrd.xsd.fieldOfViewMm(x=oversampling*256, y=256, z=5)
+    rfov = ismrmrd.xsd.fieldOfViewMm(x=256, y=256, z=5)
     
     ematrix = ismrmrd.xsd.matrixSizeType()
     ematrix.x = nkx
@@ -68,16 +56,17 @@ def create(filename='testdata.h5', matrix_size=256, coils=8, oversampling=2, rep
     rmatrix.y = ny
     rmatrix.z = 1
     
-    espace = ismrmrd.xsd.encodingSpaceType()
-    espace.matrixSize = ematrix
-    espace.fieldOfView_mm = efov
-    rspace = ismrmrd.xsd.encodingSpaceType()
-    rspace.matrixSize = rmatrix
-    rspace.fieldOfView_mm = rfov
-    
-    # Set encoded and recon spaces
-    encoding.encodedSpace = espace
-    encoding.reconSpace = rspace
+    espace = ismrmrd.xsd.encodingSpaceType(matrixSize=ematrix, fieldOfView_mm=efov)
+    rspace = ismrmrd.xsd.encodingSpaceType(matrixSize=rmatrix, fieldOfView_mm=rfov)
+
+    # Encoding
+    trajectory = ismrmrd.xsd.trajectoryType('cartesian')
+    encoding = ismrmrd.xsd.encodingType(
+        encodedSpace=espace,
+        reconSpace=rspace,
+        encodingLimits=ismrmrd.xsd.encodingLimitsType(),
+        trajectory=trajectory,
+    )
     
     # Encoding limits
     limits = ismrmrd.xsd.encodingLimitsType()
@@ -112,21 +101,13 @@ def create(filename='testdata.h5', matrix_size=256, coils=8, oversampling=2, rep
 
     # User Parameters
     user = ismrmrd.xsd.userParametersType()
-    userParameterLong = ismrmrd.xsd.userParameterLongType()
-    userParameterLong.name = 'TestLong'
-    userParameterLong.value = '42'
+    userParameterLong = ismrmrd.xsd.userParameterLongType(name='TestLong', value=42)
     user.userParameterLong.append(userParameterLong)
-    userParameterDouble = ismrmrd.xsd.userParameterDoubleType()
-    userParameterDouble.name = 'TestDouble'
-    userParameterDouble.value = '3.14159'
+    userParameterDouble = ismrmrd.xsd.userParameterDoubleType(name='TestDouble', value=3.14159)
     user.userParameterDouble.append(userParameterDouble)
-    userParameterString = ismrmrd.xsd.userParameterStringType()
-    userParameterString.name = 'TestString'
-    userParameterString.value = 'This is a test'
+    userParameterString = ismrmrd.xsd.userParameterStringType(name='TestString', value='This is a test')
     user.userParameterString.append(userParameterString)
-    userParameterBase64 = ismrmrd.xsd.userParameterBase64Type()
-    userParameterBase64.name = 'TestBase64'
-    userParameterBase64.value = 'QWxsIHlvdXIgYmFzZSBhcmUgYmVsb25nIHRvIHVz'
+    userParameterBase64 = ismrmrd.xsd.userParameterBase64Type(name='TestBase64', value='QWxsIHlvdXIgYmFzZSBhcmUgYmVsb25nIHRvIHVz')
     user.userParameterBase64.append(userParameterBase64)
     header.userParameters = user
 
