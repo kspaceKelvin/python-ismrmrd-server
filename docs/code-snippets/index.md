@@ -32,4 +32,3 @@ A CI check or periodic `grep` for each search anchor can flag drift.
 - [Extracting User Parameters from MRD Header](user-parameters.md)
 - [Creating New Series](new-series.md)
 - [Spectroscopy-Specific Settings](spectroscopy.md)
-- [Siemens ICE pipline integration](siemens-ice.md)
