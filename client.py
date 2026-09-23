@@ -179,7 +179,7 @@ def main(args):
 
     # Enumerate all possible routes to the address/port (including IPv6)
     try:
-        addrInfo = socket.getaddrinfo(args.address, args.port, socket.AF_UNSPEC)
+        addrInfo = socket.getaddrinfo(args.address, args.port, family=socket.AF_UNSPEC, type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
     except socket.gaierror as e:
         logging.error("Address resolution failed for {host}: {e}")
         return
@@ -198,9 +198,9 @@ def main(args):
                 continue
 
             try:
-                sock.connect((args.address, args.port))
+                sock.connect(sa)
             except OSError as msg:
-                logging.warning("Failed to connect: %s" % (msg))
+                logging.warning("Failed to connect to %s: %s" % (sa, msg))
                 sock.close()
                 sock = None
                 continue
@@ -220,6 +220,8 @@ def main(args):
             sock.close()
         logging.error("... Aborting")
         return
+
+    logging.info("Connected to MRD server at %s", sock.getpeername())
 
     recvAcqs      = multiprocessing.Value('i', 0)
     recvImages    = multiprocessing.Value('i', 0)
