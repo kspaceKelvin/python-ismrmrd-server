@@ -3,7 +3,7 @@
 
 # Syntax: ./docker_to_chroot.sh docker_image_name chroot_file_name optional_buffer_size_in_mb
 
-if [[ $# -gt 3 ]]; then
+if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
     echo "Wrong number of arguments" >&2
     echo "Syntax: ./docker_to_chroot.sh docker_image_name chroot_file_name optional_buffer_size_in_mb" >&2
     exit 2
