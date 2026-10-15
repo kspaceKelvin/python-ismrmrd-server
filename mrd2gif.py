@@ -281,6 +281,10 @@ def ApplyWindowLevel(images: List[Image.Image], minVals: List[float], maxVals: L
 
     imagesWL = []
     for img, minVal, maxVal in zip(images, minVals, maxVals):
+        if img.mode == 'RGB':
+            imagesWL.append(img)
+            continue
+
         dataWL = np.array(img).astype(float) - minVal
         if maxVal != minVal:
             dataWL *= 255/(maxVal - minVal)
