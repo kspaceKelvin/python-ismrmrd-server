@@ -1,0 +1,27 @@
+.md-nav__item--section > .md-nav__link {
+  color: var(--md-primary-fg-color);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.md-nav__item--section > .md-nav {
+  border-left: 2px solid var(--md-primary-fg-color--light);
+  margin-left: 0.4rem;
+  padding-left: 0.6rem;
+}
+
+.md-nav__item--section > .md-nav > .md-nav__list > .md-nav__item > .md-nav__link {
+  padding-left: 0.3rem;
+}
+
+.md-nav__item--section > .md-nav__link:hover,
+.md-nav__item--section > .md-nav__link:focus {
+  color: var(--md-accent-fg-color);
+}
+
+@media screen and (max-width: 76.1875em) {
+  .md-nav__item--section > .md-nav {
+    margin-left: 0.2rem;
+    padding-left: 0.4rem;
+  }
+}
