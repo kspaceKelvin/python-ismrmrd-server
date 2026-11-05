@@ -51,6 +51,7 @@ nav:
       - RGB Color Images: code-snippets/rgb-images.md
       - Creating an MRD Image from Scratch: code-snippets/mrd-image-from-scratch.md
       - Storing Data in MetaAttributes: code-snippets/metaattributes.md
+      - Storing Data Between Runs: code-snippets/data-between-runs.md
       - Calling External Binaries: code-snippets/external-binaries.md
       - Extracting User Parameters: code-snippets/user-parameters.md
       - Creating New Series: code-snippets/new-series.md
