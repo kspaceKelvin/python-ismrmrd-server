@@ -31,7 +31,7 @@ venc_dir_map = {'rl'  : 'FLOW_DIR_R_TO_L',
                 'in'  : 'FLOW_DIR_TP_IN',
                 'out' : 'FLOW_DIR_TP_OUT'}
 
-def CalcFieldOfView(dset):
+def CalcMrdFieldOfView(dset):
     if dset.SOPClassUID.name == 'Enhanced MR Image Storage':
         try:
             PixelMeasuresSequence = dset.SharedFunctionalGroupsSequence[0].PixelMeasuresSequence[0]
@@ -45,24 +45,38 @@ def CalcFieldOfView(dset):
             if (len(uSliceThickness) > 1) or (len(uPixelSpacingRow) > 1) or (len(uPixelSpacingCol) > 1):
                 print('Warning: Enhanced DICOM has frames with different PixelSpacing or SliceThickness -- only using information from first frame for MRD header')
 
-        return (      PixelMeasuresSequence[0].PixelSpacing[1]*dset.Rows,
-                      PixelMeasuresSequence[0].PixelSpacing[0]*dset.Columns,
-                float(PixelMeasuresSequence[0].SliceThickness))
+        return ismrmrd.xsd.fieldOfViewMm(x=      PixelMeasuresSequence[0].PixelSpacing[1]*dset.Rows,
+                                         y=      PixelMeasuresSequence[0].PixelSpacing[0]*dset.Columns,
+                                         z=float(PixelMeasuresSequence[0].SliceThickness))
 
     elif dset.SOPClassUID.name == 'MR Image Storage':
-        return (      dset.PixelSpacing[1]*dset.Rows,
-                      dset.PixelSpacing[0]*dset.Columns,
-                float(dset.SliceThickness))
+        return ismrmrd.xsd.fieldOfViewMm(x=      dset.PixelSpacing[1]*dset.Rows,
+                                         y=      dset.PixelSpacing[0]*dset.Columns,
+                                         z=float(dset.SliceThickness))
     elif dset.SOPClassUID.name == 'MR Spectroscopy Storage':
-        return (dset.VolumeLocalizationSequence[0].SlabThickness,
-                dset.VolumeLocalizationSequence[1].SlabThickness,
-                dset.VolumeLocalizationSequence[2].SlabThickness)
+        return ismrmrd.xsd.fieldOfViewMm(x=dset.VolumeLocalizationSequence[0].SlabThickness,
+                                         y=dset.VolumeLocalizationSequence[1].SlabThickness,
+                                         z=dset.VolumeLocalizationSequence[2].SlabThickness)
 
 
 def CreateMrdHeader(dset):
     """Create MRD XML header from a DICOM file"""
 
-    mrdHead = ismrmrd.xsd.ismrmrdHeader()
+    # mrdHead = ismrmrd.xsd.ismrmrdHeader()
+
+    # -------------------- experimentalConditions --------------------
+    if hasattr(dset, 'TransmitterFrequency'):
+        freq_Hz = int(getattr(dset, 'TransmitterFrequency')*1e6)
+    elif hasattr(dset, 'ImagingFrequency'):
+        freq_Hz = int(getattr(dset, 'ImagingFrequency')*1e6)
+    elif hasattr(dset, 'MagneticFieldStrength'):
+        freq_Hz = int(getattr(dset, 'MagneticFieldStrength')*4258e4)
+    else:
+        raise Exception('Could not determine resonance frequency from DICOM TransmitterFrequency, ImagingFrequency, or MagneticFieldStrength')
+
+    exp = ismrmrd.xsd.experimentalConditionsType(H1resonanceFrequency_Hz=freq_Hz)
+
+    mrdHead = ismrmrd.xsd.ismrmrdHeader(experimentalConditions=exp)
 
     # -------------------- studyInformation --------------------
     mrdHead.studyInformation = ismrmrd.xsd.studyInformationType()
@@ -81,11 +95,14 @@ def CreateMrdHeader(dset):
     mrdHead.studyInformation.bodyPartExamined       = getattr(dset, 'BodyPartExamined',       None)
 
     # -------------------- measurementInformation --------------------
-    mrdHead.measurementInformation                             = ismrmrd.xsd.measurementInformationType()
-    mrdHead.measurementInformation.measurementID               = getattr(dset, 'SeriesInstanceUID',   None)
-    mrdHead.measurementInformation.patientPosition             = getattr(dset, 'PatientPosition',     None)
-    mrdHead.measurementInformation.protocolName                = getattr(dset, 'SeriesDescription',   None)
-    mrdHead.measurementInformation.frameOfReferenceUID         = getattr(dset, 'FrameOfReferenceUID', None)
+    measurementID               = getattr(dset, 'SeriesInstanceUID',   None)
+    patientPosition             = getattr(dset, 'PatientPosition',     None)
+    protocolName                = getattr(dset, 'SeriesDescription',   None)
+    frameOfReferenceUID         = getattr(dset, 'FrameOfReferenceUID', None)
+    mrdHead.measurementInformation = ismrmrd.xsd.measurementInformationType(measurementID       = measurementID, 
+                                                                            patientPosition     = patientPosition,
+                                                                            protocolName        = protocolName,
+                                                                            frameOfReferenceUID = frameOfReferenceUID)
 
     # -------------------- acquisitionSystemInformation --------------------
     mrdHead.acquisitionSystemInformation                       = ismrmrd.xsd.acquisitionSystemInformationType()
@@ -95,42 +112,28 @@ def CreateMrdHeader(dset):
     mrdHead.acquisitionSystemInformation.institutionName       =       getattr(dset, 'InstitutionName',       None)
     mrdHead.acquisitionSystemInformation.stationName           =       getattr(dset, 'StationName',           None)
 
-    # -------------------- experimentalConditions --------------------
-    mrdHead.experimentalConditions                             = ismrmrd.xsd.experimentalConditionsType()
-    if hasattr(dset, 'TransmitterFrequency'):
-        mrdHead.experimentalConditions.H1resonanceFrequency_Hz = int(getattr(dset, 'TransmitterFrequency')*1e6)
-    elif hasattr(dset, 'ImagingFrequency'):
-        mrdHead.experimentalConditions.H1resonanceFrequency_Hz = int(getattr(dset, 'ImagingFrequency')*1e6)
-    else:
-        mrdHead.experimentalConditions.H1resonanceFrequency_Hz = int(getattr(dset, 'MagneticFieldStrength')*4258e4)
 
     # -------------------- encodingType --------------------
-    enc = ismrmrd.xsd.encodingType()
-    enc.trajectory          = ismrmrd.xsd.trajectoryType('cartesian')
+    matrixSize     = ismrmrd.xsd.matrixSizeType(x=dset.Columns, y=dset.Rows, z=0)
+    fieldOfView_mm = CalcMrdFieldOfView(dset)
+    encSpace       = ismrmrd.xsd.encodingSpaceType(matrixSize=matrixSize, fieldOfView_mm=fieldOfView_mm)
 
-    encSpace                = ismrmrd.xsd.encodingSpaceType()
-    encSpace.matrixSize     = ismrmrd.xsd.matrixSizeType()
-    encSpace.matrixSize.x   = dset.Columns
-    encSpace.matrixSize.y   = dset.Rows
-    encSpace.matrixSize.z   = 1
-    encSpace.fieldOfView_mm = ismrmrd.xsd.fieldOfViewMm(*CalcFieldOfView(dset))
-
-    enc.encodedSpace = encSpace
-    enc.reconSpace   = encSpace
-
-    enc.encodingLimits                     = ismrmrd.xsd.encodingLimitsType()
-    enc.parallelImaging                    = ismrmrd.xsd.parallelImagingType()
-    enc.parallelImaging.accelerationFactor = ismrmrd.xsd.accelerationFactorType()
+    # enc.encodingLimits                     = ismrmrd.xsd.encodingLimitsType()
     if hasattr(dset, 'SharedFunctionalGroupsSequence'):
         if dset.SharedFunctionalGroupsSequence[0].MRModifierSequence[0].ParallelAcquisition == 'NO':
-            enc.parallelImaging.accelerationFactor.kspace_encoding_step_1 = 1
-            enc.parallelImaging.accelerationFactor.kspace_encoding_step_2 = 1
+            accelerationFactor = ismrmrd.xsd.accelerationFactorType(kspace_encoding_step_1=1, kspace_encoding_step_2=1)
         else:
-            enc.parallelImaging.accelerationFactor.kspace_encoding_step_1 = dset.SharedFunctionalGroupsSequence[0].MRModifierSequence[0].ParallelReductionFactorInPlane
-            enc.parallelImaging.accelerationFactor.kspace_encoding_step_2 = dset.SharedFunctionalGroupsSequence[0].MRModifierSequence[0].ParallelReductionFactorOutOfPlane
+            accelerationFactor = ismrmrd.xsd.accelerationFactorType(kspace_encoding_step_1 = dset.SharedFunctionalGroupsSequence[0].MRModifierSequence[0].ParallelReductionFactorInPlane,
+                                                                    kspace_encoding_step_2 = dset.SharedFunctionalGroupsSequence[0].MRModifierSequence[0].ParallelReductionFactorOutOfPlane)
     else:
-        enc.parallelImaging.accelerationFactor.kspace_encoding_step_1 = 1
-        enc.parallelImaging.accelerationFactor.kspace_encoding_step_2 = 1
+        accelerationFactor = ismrmrd.xsd.accelerationFactorType(kspace_encoding_step_1=1, kspace_encoding_step_2=1)
+    parallelImaging = ismrmrd.xsd.parallelImagingType(accelerationFactor=accelerationFactor)
+
+    enc = ismrmrd.xsd.encodingType(encodedSpace    = encSpace,
+                                   reconSpace      = encSpace,
+                                   encodingLimits  = ismrmrd.xsd.encodingLimitsType(),
+                                   parallelImaging = parallelImaging,
+                                   trajectory      = ismrmrd.xsd.trajectoryType('cartesian'))
 
     mrdHead.encoding.append(enc)
 
@@ -323,7 +326,8 @@ def main(args):
                 except:
                     TriggerTime = None
 
-            tmpMrdImg.field_of_view            = CalcFieldOfView(tmpDset)
+            mrdFOV = CalcMrdFieldOfView(tmpDset)
+            tmpMrdImg.field_of_view            = tuple((mrdFOV.x, mrdFOV.y, mrdFOV.z))
             tmpMrdImg.position                 = tuple(np.stack(ImagePositionPatient))
             tmpMrdImg.read_dir                 = tuple(np.stack(ImageOrientationPatient[0:3]))
             tmpMrdImg.phase_dir                = tuple(np.stack(ImageOrientationPatient[3:7]))
