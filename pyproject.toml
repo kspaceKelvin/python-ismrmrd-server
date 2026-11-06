@@ -1,0 +1,35 @@
+[project]
+name = "python-ismrmrd-server"
+version = "0.1.0"
+description = "Python MRD streaming server/client utilities and conversion tools"
+readme = "readme.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "h5py==3.16.0",
+    "ismrmrd==1.15.0",
+    "ismrmrd-python-tools @ git+https://github.com/ismrmrd/ismrmrd-python-tools.git",
+    "matplotlib==3.11.0",
+    "numpy==2.5.0",
+    "pillow==12.3.0",
+    "pydicom==3.0.2",
+    "python-dateutil==2.9.0.post0",
+    "scipy==1.18.0",
+    "nibabel==5.4.2",
+    "pytest>=9.1.1",
+    "testcontainers>=4.14.2",
+    "docker>=7.1.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "docker==7.1.0",
+    "pytest==9.1.1",
+    "testcontainers==4.14.2",
+]
+
+[project.scripts]
+client = "python_ismrmrd_server.client:main"
+mrd2gif = "python_ismrmrd_server.mrd2gif:main"
+
+[tool.uv]
+package = false
